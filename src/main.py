@@ -1,0 +1,11 @@
+from scanner import run_scan
+from logger import logger
+
+def main():
+    logger.info("Bot Started")
+    print("CryptoNotifier starting...\n")
+    run_scan()
+    logger.info("Bot Finished")
+
+if __name__=="__main__":
+    main()
