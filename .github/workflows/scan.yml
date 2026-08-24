@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: cryptonotifier-scan
+  cancel-in-progress: false
 
 jobs:
   scan:
@@ -14,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -30,5 +36,40 @@ jobs:
           echo "BOT_TOKEN=${{ secrets.BOT_TOKEN }}" >> .env
           echo "CHAT_ID=${{ secrets.CHAT_ID }}" >> .env
 
+      - name: Sync repository
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
       - name: Run scanner
         run: python src/main.py
+
+      - name: Save positions
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add data/positions.json
+
+          if git diff --cached --quiet; then
+            echo "No position changes."
+            exit 0
+          fi
+
+          git commit -m "Update positions"
+
+          for i in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+
+            if git push origin main; then
+              echo "Positions saved successfully."
+              exit 0
+            fi
+
+            echo "Push failed. Retrying..."
+            sleep 5
+          done
+
+          echo "Failed to save positions."
+          exit 1
