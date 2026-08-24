@@ -1,6 +1,9 @@
 [
-  "BTCUSDT",
-  "ETHUSDT",
-  "SOLUSDT",
-  "BNBUSDT"
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "ZECUSDT",
+    "BNBUSDT",
+    "AAVEUSDT",
+    "PUMPUSDT"
 ]
