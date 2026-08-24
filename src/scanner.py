@@ -15,6 +15,8 @@ def run_scan():
     logger.info(f"Scanning {len(symbols)} symbols")
     print(f"Watching {len(symbols)} coins\n")
 
+    errors=[]
+
     for symbol in symbols:
         print(f"Scanning {symbol}...")
 
@@ -33,7 +35,7 @@ def run_scan():
             print(f"4H Close : {last_4h['close']}")
             print(f"4H EMA20 : {last_4h['ema20']:.4f}")
             print(f"4H EMA50 : {last_4h['ema50']:.4f}")
-            print(f"1D Close : {last_1d['close']}")
+            print(f"1D Close : {last_1d['close']:.4f}")
             print(f"1D EMA20 : {last_1d['ema20']:.4f}")
             print(f"MACD     : {last_4h['macd']:.4f}")
             print(f"Signal   : {last_4h['macd_signal']:.4f}")
@@ -60,7 +62,6 @@ def run_scan():
                     notify(message)
                     logger.warning(f"{symbol} {position['side']} position weakening")
                     print("Position: WEAKENING")
-
                 elif status=="HEALTHY":
                     print("Position: HEALTHY")
                 else:
@@ -90,5 +91,11 @@ def run_scan():
             print()
 
         except Exception as e:
+            errors.append(f"{symbol}: {e}")
             logger.exception(symbol)
-            print(f"{symbol}: {e}")
+            print(f"{symbol}: {e}\n")
+
+    if errors:
+        message="🚨 CRYPTONOTIFIER ERROR\n\n"
+        message+="\n".join(errors)
+        notify(message)
