@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -45,5 +47,19 @@ jobs:
           fi
 
           git commit -m "Update positions"
-          git pull --rebase origin main
-          git push origin main
+
+          for i in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+
+            if git push origin main; then
+              echo "Positions pushed successfully."
+              exit 0
+            fi
+
+            echo "Push failed. Retrying..."
+            sleep 5
+          done
+
+          echo "Failed to push positions after 3 attempts."
+          exit 1
