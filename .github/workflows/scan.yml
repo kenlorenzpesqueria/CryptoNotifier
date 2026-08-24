@@ -48,7 +48,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git add data/positions.json
 
           if git diff --cached --quiet; then
@@ -73,3 +72,38 @@ jobs:
 
           echo "Failed to save positions."
           exit 1
+
+      - name: Notify workflow failure
+        if: ${{ failure() }}
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          bot_token=os.environ["BOT_TOKEN"]
+          chat_id=os.environ["CHAT_ID"]
+
+          message=(
+              "🚨 CRYPTONOTIFIER WORKFLOW FAILED\n\n"
+              f"Repository: {os.environ.get('GITHUB_REPOSITORY')}\n"
+              f"Workflow: {os.environ.get('GITHUB_WORKFLOW')}\n"
+              f"Run: {os.environ.get('GITHUB_RUN_NUMBER')}\n"
+              f"Commit: {os.environ.get('GITHUB_SHA','')[:8]}\n\n"
+              "Check GitHub Actions for the failed step."
+          )
+
+          url=f"https://api.telegram.org/bot{bot_token}/sendMessage"
+          response=requests.post(
+              url,
+              data={
+                  "chat_id":chat_id,
+                  "text":message
+              },
+              timeout=10
+          )
+
+          response.raise_for_status()
+          PY
