@@ -1,5 +1,6 @@
 import requests
 import os
+import time
 
 from config import BOT_TOKEN, CHAT_ID
 from positions import (
@@ -7,7 +8,6 @@ from positions import (
     close_position,
     load_positions
 )
-
 
 OFFSET_FILE = "data/telegram_offset.json"
 
@@ -64,27 +64,45 @@ def check_telegram():
 
     updates = response.json().get("result", [])
 
+    if not updates:
+        print("No new Telegram messages.")
+        return
+
+    current_time = int(time.time())
+
     for update in updates:
         update_id = update["update_id"]
-
-        save_offset(update_id + 1)
 
         message = update.get("message")
 
         if not message:
+            save_offset(update_id + 1)
             continue
 
         chat_id = str(message.get("chat", {}).get("id"))
 
         if chat_id != str(CHAT_ID):
+            save_offset(update_id + 1)
             continue
 
         text = message.get("text", "").strip()
 
         if not text:
+            save_offset(update_id + 1)
             continue
 
+        message_date = message.get("date", 0)
+
+        if current_time - message_date > 300:
+            print(f"Ignoring old Telegram message: {text}")
+            save_offset(update_id + 1)
+            continue
+
+        print(f"Processing Telegram message: {text}")
+
         process_command(text)
+
+        save_offset(update_id + 1)
 
 
 def process_command(text):
@@ -105,18 +123,20 @@ def process_command(text):
 
 
 def handle_position(parts):
+
     if len(parts) == 3 and parts[2].upper() == "CLOSE":
+
         symbol = parts[1].upper()
 
         if close_position(symbol):
             send_message(
-                f"✅ POSITION CLOSED\n\n"
+                f"POSITION CLOSED\n\n"
                 f"Symbol: {symbol}\n\n"
                 f"CryptoNotifier will no longer monitor this position."
             )
         else:
             send_message(
-                f"❌ NO ACTIVE POSITION\n\n"
+                f"NO ACTIVE POSITION\n\n"
                 f"Symbol: {symbol}\n\n"
                 f"No position was found."
             )
@@ -158,7 +178,7 @@ def handle_position(parts):
     update_position(symbol, side, price)
 
     send_message(
-        f"✅ POSITION RECORDED\n\n"
+        f"POSITION RECORDED\n\n"
         f"Symbol: {symbol}\n"
         f"Side: {side}\n"
         f"Entry: {price:.4f}\n\n"
@@ -167,15 +187,17 @@ def handle_position(parts):
 
 
 def send_positions():
+
     positions = load_positions()
 
     if not positions:
         send_message("No active positions recorded.")
         return
 
-    lines = ["📊 ACTIVE POSITIONS\n"]
+    lines = ["ACTIVE POSITIONS\n"]
 
     for symbol, position in positions.items():
+
         lines.append(
             f"{symbol}\n"
             f"Side: {position.get('side', 'UNKNOWN')}\n"
