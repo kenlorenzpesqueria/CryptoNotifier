@@ -1,5 +1,5 @@
-from bot import check_telegram
 from scanner import run_scan
+from bot import check_telegram
 from logger import logger
 
 

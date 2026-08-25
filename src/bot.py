@@ -2,7 +2,11 @@ import requests
 import os
 
 from config import BOT_TOKEN, CHAT_ID
-from positions import update_position, load_positions
+from positions import (
+    update_position,
+    close_position,
+    load_positions
+)
 
 
 OFFSET_FILE = "data/telegram_offset.json"
@@ -12,7 +16,7 @@ def load_offset():
     try:
         with open(OFFSET_FILE, "r") as f:
             return int(f.read().strip())
-    except:
+    except Exception:
         return None
 
 
@@ -101,11 +105,31 @@ def process_command(text):
 
 
 def handle_position(parts):
+    if len(parts) == 3 and parts[2].upper() == "CLOSE":
+        symbol = parts[1].upper()
+
+        if close_position(symbol):
+            send_message(
+                f"✅ POSITION CLOSED\n\n"
+                f"Symbol: {symbol}\n\n"
+                f"CryptoNotifier will no longer monitor this position."
+            )
+        else:
+            send_message(
+                f"❌ NO ACTIVE POSITION\n\n"
+                f"Symbol: {symbol}\n\n"
+                f"No position was found."
+            )
+
+        return
+
     if len(parts) != 4:
         send_message(
             "Invalid format.\n\n"
             "Use:\n"
-            "/position BTCUSDT BUY 80457.60"
+            "/position BTCUSDT BUY 80457.60\n"
+            "/position BTCUSDT SELL 80457.60\n"
+            "/position BTCUSDT CLOSE"
         )
         return
 
