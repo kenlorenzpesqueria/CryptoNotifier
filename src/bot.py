@@ -1,7 +1,9 @@
 import requests
 import os
+
 from config import BOT_TOKEN, CHAT_ID
-from positions import update_position, load_positions, save_positions
+from positions import update_position, load_positions
+
 
 OFFSET_FILE = "data/telegram_offset.json"
 
@@ -9,7 +11,7 @@ OFFSET_FILE = "data/telegram_offset.json"
 def load_offset():
     try:
         with open(OFFSET_FILE, "r") as f:
-            return f.read().strip()
+            return int(f.read().strip())
     except:
         return None
 
@@ -21,6 +23,21 @@ def save_offset(offset):
         f.write(str(offset))
 
 
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+
+    response = requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": text
+        },
+        timeout=10
+    )
+
+    response.raise_for_status()
+
+
 def check_telegram():
     offset = load_offset()
 
@@ -28,8 +45,8 @@ def check_telegram():
         "timeout": 5
     }
 
-    if offset:
-        params["offset"] = int(offset)
+    if offset is not None:
+        params["offset"] = offset
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
 
@@ -84,68 +101,44 @@ def process_command(text):
 
 
 def handle_position(parts):
-    if len(parts) == 4:
-        symbol = parts[1].upper()
-        side = parts[2].upper()
-
-        try:
-            price = float(parts[3])
-        except ValueError:
-            send_message(
-                "❌ Invalid entry price.\n\n"
-                "Use:\n"
-                "/position BTCUSDT BUY 80457.60"
-            )
-            return
-
-        if side not in ("BUY", "SELL"):
-            send_message(
-                "❌ Side must be BUY or SELL.\n\n"
-                "Example:\n"
-                "/position BTCUSDT BUY 80457.60"
-            )
-            return
-
-        update_position(symbol, side, price)
-
+    if len(parts) != 4:
         send_message(
-            f"✅ Position recorded\n\n"
-            f"Symbol: {symbol}\n"
-            f"Side: {side}\n"
-            f"Entry: {price}"
+            "Invalid format.\n\n"
+            "Use:\n"
+            "/position BTCUSDT BUY 80457.60"
         )
-
         return
 
-    if len(parts) == 3 and parts[2].upper() == "CLOSE":
-        symbol = parts[1].upper()
+    symbol = parts[1].upper()
+    side = parts[2].upper()
 
-        positions = load_positions()
-
-        if symbol not in positions:
-            send_message(
-                f"❌ No tracked position for {symbol}."
-            )
-            return
-
-        del positions[symbol]
-        save_positions(positions)
-
+    if side not in ("BUY", "SELL"):
         send_message(
-            f"✅ Position closed\n\n"
-            f"Symbol: {symbol}"
+            "Invalid position side.\n\n"
+            "Use BUY or SELL.\n\n"
+            "Example:\n"
+            "/position BTCUSDT BUY 80457.60"
         )
-
         return
+
+    try:
+        price = float(parts[3])
+    except ValueError:
+        send_message(
+            "Invalid entry price.\n\n"
+            "Example:\n"
+            "/position BTCUSDT BUY 80457.60"
+        )
+        return
+
+    update_position(symbol, side, price)
 
     send_message(
-        "❌ Invalid position command.\n\n"
-        "Open position:\n"
-        "/position BTCUSDT BUY 80457.60\n\n"
-        "Short position:\n"
-        "/position BTCUSDT SELL 80457.60\n\n"
-        "Close position:\n"
-        "/position BTCUSDT CLOSE"
+        f"✅ POSITION RECORDED\n\n"
+        f"Symbol: {symbol}\n"
+        f"Side: {side}\n"
+        f"Entry: {price:.4f}\n\n"
+        f"CryptoNotifier will monitor this position on the next scan."
     )
 
 
@@ -153,30 +146,17 @@ def send_positions():
     positions = load_positions()
 
     if not positions:
-        send_message("📭 No tracked positions.")
+        send_message("No active positions recorded.")
         return
 
-    lines = ["📊 TRACKED POSITIONS\n"]
+    lines = ["📊 ACTIVE POSITIONS\n"]
 
     for symbol, position in positions.items():
         lines.append(
             f"{symbol}\n"
-            f"Side: {position['side']}\n"
-            f"Entry: {position['entry_price']}\n"
-            f"Status: {position.get('status', 'HEALTHY')}\n"
+            f"Side: {position.get('side', 'UNKNOWN')}\n"
+            f"Entry: {position.get('entry_price', 'UNKNOWN')}\n"
+            f"Status: {position.get('status', 'UNKNOWN')}\n"
         )
 
     send_message("\n".join(lines))
-
-
-def send_message(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    requests.post(
-        url,
-        data={
-            "chat_id": CHAT_ID,
-            "text": message
-        },
-        timeout=10
-    )
