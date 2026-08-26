@@ -1,6 +1,7 @@
 import json
 
 from binance import get_klines
+from config import CANDLE_LIMIT
 from indicators import calculate_indicators
 from signals import get_signal
 from telegram_sender import notify
@@ -30,8 +31,8 @@ def run_scan():
         print(f"Scanning {symbol}...")
 
         try:
-            df_4h = get_klines(symbol, "4h", 1000)
-            df_1d = get_klines(symbol, "1d", 1000)
+            df_4h = get_klines(symbol, "4h", CANDLE_LIMIT)
+            df_1d = get_klines(symbol, "1d", CANDLE_LIMIT)
 
             df_4h = calculate_indicators(df_4h)
             df_1d = calculate_indicators(df_1d)
