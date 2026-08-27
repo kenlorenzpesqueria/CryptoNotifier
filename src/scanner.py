@@ -9,7 +9,7 @@ from positions import (
     should_send,
     update_position,
     get_position,
-    evaluate_position
+    evaluate_position,
 )
 from logger import logger
 
@@ -21,6 +21,7 @@ def load_watchlist():
 
 def run_scan():
     symbols = load_watchlist()
+    results = []
 
     logger.info(f"Scanning {len(symbols)} symbols")
     print(f"Watching {len(symbols)} coins\n")
@@ -53,7 +54,7 @@ def run_scan():
                 "4H MACD above 0":
                     current_4h["macd"] > 0,
                 "1D close above EMA20":
-                    current_1d["close"] > current_1d["ema20"]
+                    current_1d["close"] > current_1d["ema20"],
             }
 
             sell_conditions = {
@@ -66,7 +67,7 @@ def run_scan():
                 "4H MACD below 0":
                     current_4h["macd"] < 0,
                 "1D close below EMA20":
-                    current_1d["close"] < current_1d["ema20"]
+                    current_1d["close"] < current_1d["ema20"],
             }
 
             print(f"4H Close : {current_4h['close']}")
@@ -77,21 +78,32 @@ def run_scan():
             print(f"MACD     : {current_4h['macd']:.4f}")
             print(f"Signal   : {current_4h['macd_signal']:.4f}")
 
+            # Get the current position.
             position = get_position(symbol)
+
+            # Evaluate the position BEFORE adding it to the
+            # daily report so the report contains the latest status.
+            position_status = None
 
             if position:
                 status = evaluate_position(
                     symbol,
                     position["side"],
-                    current_4h
+                    current_4h,
                 )
 
                 if status == "WEAKENING":
+                    position_status = "WEAKENING"
+
                     if position["side"] == "BUY":
-                        price_ok = current_4h["close"] >= current_4h["ema20"]
+                        price_ok = (
+                            current_4h["close"] >= current_4h["ema20"]
+                        )
                         macd_ok = current_4h["macd"] >= 0
                     else:
-                        price_ok = current_4h["close"] <= current_4h["ema20"]
+                        price_ok = (
+                            current_4h["close"] <= current_4h["ema20"]
+                        )
                         macd_ok = current_4h["macd"] <= 0
 
                     message = (
@@ -109,16 +121,42 @@ def run_scan():
                     )
 
                     notify(message)
+
                     logger.warning(
                         f"{symbol} {position['side']} position weakening"
                     )
+
                     print("Position: WEAKENING")
 
                 elif status == "HEALTHY":
+                    position_status = "HEALTHY"
                     print("Position: HEALTHY")
-                else:
-                    print(f"Position: {position['status']}")
 
+                else:
+                    # No status change occurred, so use the
+                    # status already stored in positions.json.
+                    position_status = position.get(
+                        "status",
+                        "UNKNOWN",
+                    )
+
+                    print(f"Position: {position_status}")
+
+            # Record the scan result in memory only.
+            #
+            # Nothing related to the daily report is written
+            # to disk.
+            results.append({
+                "symbol": symbol,
+                "signal": signal,
+                "price": float(current_4h["close"]),
+                "ema20_4h": float(current_4h["ema20"]),
+                "ema20_1d": float(current_1d["ema20"]),
+                "position": position["side"] if position else None,
+                "position_status": position_status,
+            })
+
+            # Send a new BUY/SELL signal only when appropriate.
             if signal and should_send(symbol, signal):
                 conditions = (
                     buy_conditions
@@ -150,12 +188,14 @@ def run_scan():
                 update_position(
                     symbol,
                     signal,
-                    current_4h["close"]
+                    current_4h["close"],
                 )
 
                 notify(message)
+
                 logger.info(f"{symbol} {signal}")
                 print(f"Trade : {signal}")
+
             else:
                 print("Trade : NONE")
 
@@ -166,9 +206,13 @@ def run_scan():
             logger.exception(symbol)
             print(f"{symbol}: {e}\n")
 
+    # Send errors if any occurred.
     if errors:
         message = (
             "🚨 CRYPTONOTIFIER ERROR\n\n"
             + "\n".join(errors)
         )
+
         notify(message)
+
+    return results
