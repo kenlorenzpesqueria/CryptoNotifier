@@ -1,5 +1,4 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
 from scanner import run_scan
 from bot import check_telegram
@@ -7,11 +6,8 @@ from telegram_sender import notify
 from logger import logger
 
 
-MANILA_TZ = ZoneInfo("Asia/Manila")
-
-
 def send_daily_report(results):
-    now = datetime.now(MANILA_TZ)
+    now = datetime.now(timezone.utc)
 
     buy_count = sum(
         1 for result in results
@@ -32,7 +28,8 @@ def send_daily_report(results):
         "📊 CRYPTONOTIFIER DAILY TRADE REPORT",
         "",
         f"📅 {now.strftime('%B %d, %Y')}",
-        "🕛 12:00 AM PHT",
+        "🕛 12:00 AM UTC",
+        "🇵🇭 8:00 AM PHT",
         "",
         "━━━━━━━━━━━━━━━━━━",
         "MARKET SCAN",
@@ -41,7 +38,7 @@ def send_daily_report(results):
         f"🟢 BUY signals: {buy_count}",
         f"🔴 SELL signals: {sell_count}",
         f"⚪ NONE: {none_count}",
-        "",
+        ""
     ]
 
     for result in results:
@@ -76,11 +73,9 @@ def send_daily_report(results):
     lines.extend([
         "━━━━━━━━━━━━━━━━━━",
         "CryptoNotifier",
-        "4H scanner • 1D EMA20 filter",
+        "4H scanner • 1D EMA20 filter"
     ])
 
-    # The report is sent directly to Telegram.
-    # It is NOT saved anywhere.
     notify("\n".join(lines))
 
     logger.info("Daily trade report sent")
@@ -91,24 +86,15 @@ def main():
     logger.info("Bot Started")
     print("CryptoNotifier starting...\n")
 
-    # Check Telegram commands first.
     check_telegram()
 
-    # Run the normal market scan.
     results = run_scan()
 
-    now = datetime.now(MANILA_TZ)
+    # Use UTC explicitly.
+    now = datetime.now(timezone.utc)
 
-    # The Cloud Scheduler runs every 4 hours:
-    #
-    # 00:00
-    # 04:00
-    # 08:00
-    # 12:00
-    # 16:00
-    # 20:00
-    #
-    # Only the midnight execution sends the daily report.
+    # Daily report is sent during the 00:00 UTC run.
+    # 00:00 UTC = 08:00 Asia/Manila.
     if now.hour == 0:
         send_daily_report(results)
 
