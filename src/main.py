@@ -6,8 +6,11 @@ from telegram_sender import notify
 from logger import logger
 
 
+UTC = timezone.utc
+
+
 def send_daily_report(results):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     buy_count = sum(
         1 for result in results
@@ -90,11 +93,19 @@ def main():
 
     results = run_scan()
 
-    # Use UTC explicitly.
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
-    # Daily report is sent during the 00:00 UTC run.
-    # 00:00 UTC = 08:00 Asia/Manila.
+    # Cloud Scheduler runs every 4 hours in UTC:
+    #
+    # 00:00 UTC = 08:00 PHT
+    # 04:00 UTC = 12:00 PHT
+    # 08:00 UTC = 16:00 PHT
+    # 12:00 UTC = 20:00 PHT
+    # 16:00 UTC = 00:00 PHT
+    # 20:00 UTC = 04:00 PHT
+    #
+    # The daily report is sent only during the 00:00 UTC run.
+
     if now.hour == 0:
         send_daily_report(results)
 
