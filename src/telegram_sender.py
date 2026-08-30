@@ -16,7 +16,12 @@ def notify(message):
         timeout=10
     )
 
-    response.raise_for_status()
+    if not response.ok:
+        print(f"Telegram notify failed: {response.status_code}")
+        print(f"Telegram response: {response.text}")
+        return False
+
+    return True
 
 
 def get_updates(offset=None):
