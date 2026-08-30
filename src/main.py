@@ -41,7 +41,7 @@ def send_daily_report(results):
         f"🟢 BUY signals: {buy_count}",
         f"🔴 SELL signals: {sell_count}",
         f"⚪ NONE: {none_count}",
-        ""
+        "",
     ]
 
     for result in results:
@@ -73,11 +73,13 @@ def send_daily_report(results):
 
         lines.append("")
 
-    lines.extend([
-        "━━━━━━━━━━━━━━━━━━",
-        "CryptoNotifier",
-        "4H scanner • 1D EMA20 filter"
-    ])
+    lines.extend(
+        [
+            "━━━━━━━━━━━━━━━━━━",
+            "CryptoNotifier",
+            "4H scanner • 1D EMA20 filter",
+        ]
+    )
 
     notify("\n".join(lines))
 
@@ -95,6 +97,11 @@ def main():
 
     now = datetime.now(UTC)
 
+    # Debug information
+    print(f"DEBUG UTC TIME: {now.isoformat()}")
+    print(f"DEBUG UTC HOUR: {now.hour}")
+    print(f"DEBUG UTC MINUTE: {now.minute}")
+
     # Cloud Scheduler runs every 4 hours in UTC:
     #
     # 00:00 UTC = 08:00 PHT
@@ -104,7 +111,7 @@ def main():
     # 16:00 UTC = 00:00 PHT
     # 20:00 UTC = 04:00 PHT
     #
-    # The daily report is sent only during the 00:00 UTC run.
+    # Send the daily report only during the 00:00 UTC run.
 
     if now.hour == 0:
         send_daily_report(results)
