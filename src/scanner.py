@@ -50,8 +50,8 @@ def run_scan():
                     current_4h["close"] > current_4h["ema20"],
                 "Current 4H close above EMA50":
                     current_4h["close"] > current_4h["ema50"],
-                "4H MACD above 0":
-                    current_4h["macd"] > 0,
+                "4H MACD Histogram above 0":
+                    current_4h["macd_hist"] > 0,
                 "1D close above EMA20":
                     current_1d["close"] > current_1d["ema20"],
             }
@@ -63,8 +63,8 @@ def run_scan():
                     current_4h["close"] < current_4h["ema20"],
                 "Current 4H close below EMA50":
                     current_4h["close"] < current_4h["ema50"],
-                "4H MACD below 0":
-                    current_4h["macd"] < 0,
+                "4H MACD Histogram below 0":
+                    current_4h["macd_hist"] < 0,
                 "1D close below EMA20":
                     current_1d["close"] < current_1d["ema20"],
             }
@@ -76,6 +76,7 @@ def run_scan():
             print(f"1D EMA20 : {current_1d['ema20']:.4f}")
             print(f"MACD     : {current_4h['macd']:.4f}")
             print(f"Signal   : {current_4h['macd_signal']:.4f}")
+            print(f"Histogram: {current_4h['macd_hist']:.4f}")
 
             position = get_position(symbol)
             position_status = None
@@ -94,12 +95,12 @@ def run_scan():
                         price_ok = (
                             current_4h["close"] >= current_4h["ema20"]
                         )
-                        macd_ok = current_4h["macd"] >= 0
+                        macd_ok = current_4h["macd_hist"] >= 0
                     else:
                         price_ok = (
                             current_4h["close"] <= current_4h["ema20"]
                         )
-                        macd_ok = current_4h["macd"] <= 0
+                        macd_ok = current_4h["macd_hist"] <= 0
 
                     message = (
                         f"⚠️ POSITION WEAKENING\n\n"
@@ -109,9 +110,10 @@ def run_scan():
                         f"📊 EMA20: {current_4h['ema20']:.4f}\n"
                         f"📈 EMA50: {current_4h['ema50']:.4f}\n"
                         f"MACD: {current_4h['macd']:.4f}\n"
-                        f"Signal: {current_4h['macd_signal']:.4f}\n\n"
+                        f"Signal: {current_4h['macd_signal']:.4f}\n"
+                        f"Histogram: {current_4h['macd_hist']:.4f}\n\n"
                         f"{'✅' if price_ok else '❌'} Price vs EMA20\n"
-                        f"{'✅' if macd_ok else '❌'} MACD vs 0\n\n"
+                        f"{'✅' if macd_ok else '❌'} MACD Histogram vs 0\n\n"
                         f"⚠️ Review your {position['side']} position."
                     )
 
@@ -169,7 +171,8 @@ def run_scan():
                     f"1D Close: {current_1d['close']:.4f}\n"
                     f"1D EMA20: {current_1d['ema20']:.4f}\n"
                     f"MACD: {current_4h['macd']:.4f}\n"
-                    f"Signal: {current_4h['macd_signal']:.4f}\n\n"
+                    f"Signal: {current_4h['macd_signal']:.4f}\n"
+                    f"Histogram: {current_4h['macd_hist']:.4f}\n\n"
                     f"🎯 Recommendation: {signal}"
                 )
 

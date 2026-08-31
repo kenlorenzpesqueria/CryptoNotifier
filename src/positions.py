@@ -34,7 +34,7 @@ def get_position(symbol):
 def update_position(symbol, signal, price):
     position = {
         "side": signal,
-        "entry_price": float(price),
+        "entry_price": price,
         "signal_time": datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M"
         ),
@@ -102,13 +102,13 @@ def evaluate_position(symbol, side, current):
     if side == "BUY":
         weakening = (
             current["close"] < current["ema20"]
-            or current["macd"] < 0
+            or current["macd_hist"] < 0
         )
 
     elif side == "SELL":
         weakening = (
             current["close"] > current["ema20"]
-            or current["macd"] > 0
+            or current["macd_hist"] > 0
         )
 
     else:
