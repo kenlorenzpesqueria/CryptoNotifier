@@ -1,80 +1,165 @@
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-POSITION_FILE = "data/positions.json"
+from google.cloud import firestore
+
+
+# Firestore client
+db = firestore.Client()
+
+POSITIONS_COLLECTION = "positions"
 
 
 def load_positions():
-    try:
-        with open(POSITION_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    """
+    Load all active positions from Firestore.
+
+    Returns:
+        dict: {
+            "BTCUSDT": {
+                "side": "BUY",
+                "entry_price": 80457.60,
+                "signal_time": "...",
+                "status": "HEALTHY"
+            }
+        }
+    """
+
+    positions = {}
+
+    docs = db.collection(POSITIONS_COLLECTION).stream()
+
+    for doc in docs:
+        positions[doc.id] = doc.to_dict()
+
+    return positions
 
 
 def save_positions(positions):
-    with open(POSITION_FILE, "w") as f:
-        json.dump(positions, f, indent=4)
+    """
+    Save all positions to Firestore.
+
+    Existing positions are updated.
+    """
+
+    collection = db.collection(POSITIONS_COLLECTION)
+
+    for symbol, position in positions.items():
+        collection.document(symbol).set(position)
 
 
 def get_position(symbol):
-    positions = load_positions()
-    return positions.get(symbol)
+    """
+    Get one position from Firestore.
+    """
+
+    doc = (
+        db.collection(POSITIONS_COLLECTION)
+        .document(symbol)
+        .get()
+    )
+
+    if not doc.exists:
+        return None
+
+    return doc.to_dict()
 
 
 def update_position(symbol, signal, price):
-    positions = load_positions()
+    """
+    Create or replace a position.
+    """
 
-    positions[symbol] = {
+    position = {
         "side": signal,
         "entry_price": price,
-        "signal_time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "signal_time": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M"
+        ),
         "status": "HEALTHY"
     }
 
-    save_positions(positions)
+    (
+        db.collection(POSITIONS_COLLECTION)
+        .document(symbol)
+        .set(position)
+    )
 
 
 def close_position(symbol):
-    positions = load_positions()
+    """
+    Remove an active position.
+    """
 
-    if symbol not in positions:
+    doc_ref = (
+        db.collection(POSITIONS_COLLECTION)
+        .document(symbol)
+    )
+
+    doc = doc_ref.get()
+
+    if not doc.exists:
         return False
 
-    del positions[symbol]
-    save_positions(positions)
+    doc_ref.delete()
 
     return True
 
 
 def should_send(symbol, signal):
-    positions = load_positions()
+    """
+    Determine whether a new BUY/SELL signal should be sent.
 
-    if symbol not in positions:
+    If there is no existing position:
+        True
+
+    If the existing position is the opposite side:
+        True
+
+    If the existing position has the same side:
+        False
+    """
+
+    position = get_position(symbol)
+
+    if position is None:
         return True
 
-    return positions[symbol]["side"] != signal
+    return position.get("side") != signal
 
 
 def update_status(symbol, status):
-    positions = load_positions()
+    """
+    Update the status of an existing position.
+    """
 
-    if symbol not in positions:
+    doc_ref = (
+        db.collection(POSITIONS_COLLECTION)
+        .document(symbol)
+    )
+
+    doc = doc_ref.get()
+
+    if not doc.exists:
         return False
 
-    positions[symbol]["status"] = status
-    save_positions(positions)
+    doc_ref.update({
+        "status": status
+    })
 
     return True
 
 
 def evaluate_position(symbol, side, current):
-    positions = load_positions()
+    """
+    Evaluate whether an existing position is healthy
+    or weakening based on current market conditions.
+    """
 
-    if symbol not in positions:
+    position = get_position(symbol)
+
+    if position is None:
         return None
 
-    position = positions[symbol]
     old_status = position.get("status", "HEALTHY")
 
     if side == "BUY":
@@ -92,11 +177,22 @@ def evaluate_position(symbol, side, current):
     else:
         return None
 
-    new_status = "WEAKENING" if weakening else "HEALTHY"
+    new_status = (
+        "WEAKENING"
+        if weakening
+        else "HEALTHY"
+    )
 
     if old_status != new_status:
-        position["status"] = new_status
-        save_positions(positions)
+
+        (
+            db.collection(POSITIONS_COLLECTION)
+            .document(symbol)
+            .update({
+                "status": new_status
+            })
+        )
+
         return new_status
 
     return None
