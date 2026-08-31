@@ -1,6 +1,5 @@
 import requests
 import os
-import time
 
 from config import BOT_TOKEN, CHAT_ID
 from positions import (
@@ -8,6 +7,7 @@ from positions import (
     close_position,
     load_positions
 )
+
 
 OFFSET_FILE = "data/telegram_offset.json"
 
@@ -43,10 +43,22 @@ def send_message(text):
 
 
 def check_telegram():
+    """
+    Check Telegram for pending messages.
+
+    Messages are NOT rejected based on age.
+    Any unacknowledged Telegram update will be processed
+    on the next scanner execution.
+
+    The update_id is saved after processing so the same
+    Telegram message is not processed again.
+    """
+
     offset = load_offset()
 
     params = {
-        "timeout": 5
+        "timeout": 5,
+        "allowed_updates": ["message"]
     }
 
     if offset is not None:
@@ -62,50 +74,77 @@ def check_telegram():
 
     response.raise_for_status()
 
-    updates = response.json().get("result", [])
+    data = response.json()
+
+    if not data.get("ok"):
+        raise RuntimeError(data)
+
+    updates = data.get("result", [])
 
     if not updates:
         print("No new Telegram messages.")
         return
 
-    current_time = int(time.time())
-
     for update in updates:
+
         update_id = update["update_id"]
 
         message = update.get("message")
 
+        # Ignore updates that are not messages
         if not message:
             save_offset(update_id + 1)
             continue
 
-        chat_id = str(message.get("chat", {}).get("id"))
+        chat_id = str(
+            message.get("chat", {}).get("id")
+        )
 
+        # Ignore messages from other chats
         if chat_id != str(CHAT_ID):
             save_offset(update_id + 1)
             continue
 
         text = message.get("text", "").strip()
 
+        # Ignore empty messages
         if not text:
             save_offset(update_id + 1)
             continue
 
-        message_date = message.get("date", 0)
+        print(
+            f"Processing Telegram message "
+            f"(update_id={update_id}): {text}"
+        )
 
-        if current_time - message_date > 300:
-            print(f"Ignoring old Telegram message: {text}")
+        try:
+            process_command(text)
+
+            # Acknowledge this Telegram update only after
+            # successfully processing the command.
             save_offset(update_id + 1)
-            continue
 
-        print(f"Processing Telegram message: {text}")
+            print(
+                f"Telegram update {update_id} acknowledged."
+            )
 
-        process_command(text)
+        except Exception as e:
+            print(
+                f"Failed to process Telegram update "
+                f"{update_id}: {e}"
+            )
 
-        save_offset(update_id + 1)
+            # IMPORTANT:
+            # Do NOT advance the offset if processing failed.
+            #
+            # This allows the message to be retried on
+            # the next Cloud Run execution.
+
+            raise
 
 
 def process_command(text):
+
     parts = text.split()
 
     if not parts:
@@ -124,17 +163,26 @@ def process_command(text):
 
 def handle_position(parts):
 
+    # -----------------------------------------
+    # CLOSE POSITION
+    # /position BTCUSDT CLOSE
+    # -----------------------------------------
+
     if len(parts) == 3 and parts[2].upper() == "CLOSE":
 
         symbol = parts[1].upper()
 
         if close_position(symbol):
+
             send_message(
                 f"POSITION CLOSED\n\n"
                 f"Symbol: {symbol}\n\n"
-                f"CryptoNotifier will no longer monitor this position."
+                f"CryptoNotifier will no longer monitor "
+                f"this position."
             )
+
         else:
+
             send_message(
                 f"NO ACTIVE POSITION\n\n"
                 f"Symbol: {symbol}\n\n"
@@ -143,7 +191,12 @@ def handle_position(parts):
 
         return
 
+    # -----------------------------------------
+    # POSITION FORMAT CHECK
+    # -----------------------------------------
+
     if len(parts) != 4:
+
         send_message(
             "Invalid format.\n\n"
             "Use:\n"
@@ -151,38 +204,66 @@ def handle_position(parts):
             "/position BTCUSDT SELL 80457.60\n"
             "/position BTCUSDT CLOSE"
         )
+
         return
 
     symbol = parts[1].upper()
     side = parts[2].upper()
 
+    # -----------------------------------------
+    # CHECK BUY / SELL
+    # -----------------------------------------
+
     if side not in ("BUY", "SELL"):
+
         send_message(
             "Invalid position side.\n\n"
             "Use BUY or SELL.\n\n"
             "Example:\n"
             "/position BTCUSDT BUY 80457.60"
         )
+
         return
 
+    # -----------------------------------------
+    # CHECK ENTRY PRICE
+    # -----------------------------------------
+
     try:
+
         price = float(parts[3])
+
     except ValueError:
+
         send_message(
             "Invalid entry price.\n\n"
             "Example:\n"
             "/position BTCUSDT BUY 80457.60"
         )
+
         return
 
-    update_position(symbol, side, price)
+    # -----------------------------------------
+    # SAVE POSITION
+    # -----------------------------------------
+
+    update_position(
+        symbol,
+        side,
+        price
+    )
+
+    # -----------------------------------------
+    # CONFIRMATION
+    # -----------------------------------------
 
     send_message(
         f"POSITION RECORDED\n\n"
         f"Symbol: {symbol}\n"
         f"Side: {side}\n"
         f"Entry: {price:.4f}\n\n"
-        f"CryptoNotifier will monitor this position on the next scan."
+        f"CryptoNotifier will monitor this "
+        f"position on the next scan."
     )
 
 
@@ -191,10 +272,16 @@ def send_positions():
     positions = load_positions()
 
     if not positions:
-        send_message("No active positions recorded.")
+
+        send_message(
+            "No active positions recorded."
+        )
+
         return
 
-    lines = ["ACTIVE POSITIONS\n"]
+    lines = [
+        "ACTIVE POSITIONS\n"
+    ]
 
     for symbol, position in positions.items():
 
@@ -205,4 +292,6 @@ def send_positions():
             f"Status: {position.get('status', 'UNKNOWN')}\n"
         )
 
-    send_message("\n".join(lines))
+    send_message(
+        "\n".join(lines)
+    )
