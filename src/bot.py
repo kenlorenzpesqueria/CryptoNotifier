@@ -43,17 +43,6 @@ def send_message(text):
 
 
 def check_telegram():
-    """
-    Check Telegram for pending messages.
-
-    Messages are NOT rejected based on age.
-    Any unacknowledged Telegram update will be processed
-    on the next scanner execution.
-
-    The update_id is saved after processing so the same
-    Telegram message is not processed again.
-    """
-
     offset = load_offset()
 
     params = {
@@ -91,7 +80,6 @@ def check_telegram():
 
         message = update.get("message")
 
-        # Ignore updates that are not messages
         if not message:
             save_offset(update_id + 1)
             continue
@@ -100,14 +88,12 @@ def check_telegram():
             message.get("chat", {}).get("id")
         )
 
-        # Ignore messages from other chats
         if chat_id != str(CHAT_ID):
             save_offset(update_id + 1)
             continue
 
         text = message.get("text", "").strip()
 
-        # Ignore empty messages
         if not text:
             save_offset(update_id + 1)
             continue
@@ -120,8 +106,6 @@ def check_telegram():
         try:
             process_command(text)
 
-            # Acknowledge this Telegram update only after
-            # successfully processing the command.
             save_offset(update_id + 1)
 
             print(
@@ -133,12 +117,6 @@ def check_telegram():
                 f"Failed to process Telegram update "
                 f"{update_id}: {e}"
             )
-
-            # IMPORTANT:
-            # Do NOT advance the offset if processing failed.
-            #
-            # This allows the message to be retried on
-            # the next Cloud Run execution.
 
             raise
 
@@ -163,11 +141,6 @@ def process_command(text):
 
 def handle_position(parts):
 
-    # -----------------------------------------
-    # CLOSE POSITION
-    # /position BTCUSDT CLOSE
-    # -----------------------------------------
-
     if len(parts) == 3 and parts[2].upper() == "CLOSE":
 
         symbol = parts[1].upper()
@@ -191,10 +164,6 @@ def handle_position(parts):
 
         return
 
-    # -----------------------------------------
-    # POSITION FORMAT CHECK
-    # -----------------------------------------
-
     if len(parts) != 4:
 
         send_message(
@@ -210,10 +179,6 @@ def handle_position(parts):
     symbol = parts[1].upper()
     side = parts[2].upper()
 
-    # -----------------------------------------
-    # CHECK BUY / SELL
-    # -----------------------------------------
-
     if side not in ("BUY", "SELL"):
 
         send_message(
@@ -224,10 +189,6 @@ def handle_position(parts):
         )
 
         return
-
-    # -----------------------------------------
-    # CHECK ENTRY PRICE
-    # -----------------------------------------
 
     try:
 
@@ -243,25 +204,18 @@ def handle_position(parts):
 
         return
 
-    # -----------------------------------------
-    # SAVE POSITION
-    # -----------------------------------------
-
     update_position(
         symbol,
         side,
         price
     )
 
-    # -----------------------------------------
-    # CONFIRMATION
-    # -----------------------------------------
-
     send_message(
         f"POSITION RECORDED\n\n"
         f"Symbol: {symbol}\n"
         f"Side: {side}\n"
-        f"Entry: {price:.4f}\n\n"
+        f"Entry Price: {price:.4f}\n"
+        f"Status: HEALTHY\n\n"
         f"CryptoNotifier will monitor this "
         f"position on the next scan."
     )
@@ -271,25 +225,58 @@ def send_positions():
 
     positions = load_positions()
 
+    positions = {
+        symbol: position
+        for symbol, position in positions.items()
+        if position.get("side") in ("BUY", "SELL")
+    }
+
     if not positions:
 
         send_message(
-            "No active positions recorded."
+            "NO ACTIVE POSITIONS"
         )
 
         return
 
     lines = [
-        "ACTIVE POSITIONS\n"
+        "ACTIVE POSITIONS",
+        ""
     ]
 
     for symbol, position in positions.items():
 
+        entry_price = position.get(
+            "entry_price",
+            "UNKNOWN"
+        )
+
+        signal_time = position.get(
+            "signal_time",
+            "UNKNOWN"
+        )
+
+        side = position.get(
+            "side",
+            "UNKNOWN"
+        )
+
+        status = position.get(
+            "status",
+            "UNKNOWN"
+        )
+
+        if isinstance(entry_price, (int, float)):
+            entry_text = f"{entry_price:.4f}"
+        else:
+            entry_text = str(entry_price)
+
         lines.append(
             f"{symbol}\n"
-            f"Side: {position.get('side', 'UNKNOWN')}\n"
-            f"Entry: {position.get('entry_price', 'UNKNOWN')}\n"
-            f"Status: {position.get('status', 'UNKNOWN')}\n"
+            f"Side: {side}\n"
+            f"Entry Price: {entry_text}\n"
+            f"Status: {status}\n"
+            f"Opened: {signal_time}\n"
         )
 
     send_message(
