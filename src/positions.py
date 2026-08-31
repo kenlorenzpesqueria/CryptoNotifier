@@ -3,25 +3,15 @@ from datetime import datetime, timezone
 from google.cloud import firestore
 
 
-# Firestore client
-db = firestore.Client()
-
+# Firestore
+db = firestore.Client(project="cryptonotifier-503415")
 POSITIONS_COLLECTION = "positions"
 
 
 def load_positions():
     """
-    Load all active positions from Firestore.
-
-    Returns:
-        dict: {
-            "BTCUSDT": {
-                "side": "BUY",
-                "entry_price": 80457.60,
-                "signal_time": "...",
-                "status": "HEALTHY"
-            }
-        }
+    Load all positions from Firestore.
+    Returns a dictionary keyed by symbol.
     """
 
     positions = {}
@@ -32,19 +22,6 @@ def load_positions():
         positions[doc.id] = doc.to_dict()
 
     return positions
-
-
-def save_positions(positions):
-    """
-    Save all positions to Firestore.
-
-    Existing positions are updated.
-    """
-
-    collection = db.collection(POSITIONS_COLLECTION)
-
-    for symbol, position in positions.items():
-        collection.document(symbol).set(position)
 
 
 def get_position(symbol):
@@ -66,7 +43,7 @@ def get_position(symbol):
 
 def update_position(symbol, signal, price):
     """
-    Create or replace a position.
+    Create or replace a position in Firestore.
     """
 
     position = {
@@ -75,7 +52,7 @@ def update_position(symbol, signal, price):
         "signal_time": datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M"
         ),
-        "status": "HEALTHY"
+        "status": "HEALTHY",
     }
 
     (
@@ -87,7 +64,7 @@ def update_position(symbol, signal, price):
 
 def close_position(symbol):
     """
-    Remove an active position.
+    Delete a position from Firestore.
     """
 
     doc_ref = (
@@ -107,16 +84,11 @@ def close_position(symbol):
 
 def should_send(symbol, signal):
     """
-    Determine whether a new BUY/SELL signal should be sent.
+    Return True if a new signal should be sent.
 
-    If there is no existing position:
-        True
-
-    If the existing position is the opposite side:
-        True
-
-    If the existing position has the same side:
-        False
+    A signal is sent when:
+    - No existing position exists, or
+    - Existing position has the opposite side.
     """
 
     position = get_position(symbol)
@@ -151,8 +123,19 @@ def update_status(symbol, status):
 
 def evaluate_position(symbol, side, current):
     """
-    Evaluate whether an existing position is healthy
-    or weakening based on current market conditions.
+    Evaluate an existing position and update its health status.
+
+    BUY:
+        Weakens if price falls below EMA20
+        OR MACD becomes negative.
+
+    SELL:
+        Weakens if price rises above EMA20
+        OR MACD becomes positive.
+
+    Returns:
+        "WEAKENING" or "HEALTHY" when status changes.
+        None when there is no change or no position.
     """
 
     position = get_position(symbol)
@@ -177,14 +160,9 @@ def evaluate_position(symbol, side, current):
     else:
         return None
 
-    new_status = (
-        "WEAKENING"
-        if weakening
-        else "HEALTHY"
-    )
+    new_status = "WEAKENING" if weakening else "HEALTHY"
 
     if old_status != new_status:
-
         (
             db.collection(POSITIONS_COLLECTION)
             .document(symbol)
