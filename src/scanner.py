@@ -7,7 +7,6 @@ from signals import get_signal
 from telegram_sender import notify
 from positions import (
     should_send,
-    update_position,
     get_position,
     evaluate_position,
 )
@@ -78,11 +77,7 @@ def run_scan():
             print(f"MACD     : {current_4h['macd']:.4f}")
             print(f"Signal   : {current_4h['macd_signal']:.4f}")
 
-            # Get the current position.
             position = get_position(symbol)
-
-            # Evaluate the position BEFORE adding it to the
-            # daily report so the report contains the latest status.
             position_status = None
 
             if position:
@@ -133,8 +128,6 @@ def run_scan():
                     print("Position: HEALTHY")
 
                 else:
-                    # No status change occurred, so use the
-                    # status already stored in positions.json.
                     position_status = position.get(
                         "status",
                         "UNKNOWN",
@@ -142,10 +135,6 @@ def run_scan():
 
                     print(f"Position: {position_status}")
 
-            # Record the scan result in memory only.
-            #
-            # Nothing related to the daily report is written
-            # to disk.
             results.append({
                 "symbol": symbol,
                 "signal": signal,
@@ -156,7 +145,6 @@ def run_scan():
                 "position_status": position_status,
             })
 
-            # Send a new BUY/SELL signal only when appropriate.
             if signal and should_send(symbol, signal):
                 conditions = (
                     buy_conditions
@@ -185,12 +173,6 @@ def run_scan():
                     f"🎯 Recommendation: {signal}"
                 )
 
-                update_position(
-                    symbol,
-                    signal,
-                    current_4h["close"],
-                )
-
                 notify(message)
 
                 logger.info(f"{symbol} {signal}")
@@ -206,7 +188,6 @@ def run_scan():
             logger.exception(symbol)
             print(f"{symbol}: {e}\n")
 
-    # Send errors if any occurred.
     if errors:
         message = (
             "🚨 CRYPTONOTIFIER ERROR\n\n"

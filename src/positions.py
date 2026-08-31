@@ -3,17 +3,11 @@ from datetime import datetime, timezone
 from google.cloud import firestore
 
 
-# Firestore
 db = firestore.Client(project="cryptonotifier-503415")
 POSITIONS_COLLECTION = "positions"
 
 
 def load_positions():
-    """
-    Load all positions from Firestore.
-    Returns a dictionary keyed by symbol.
-    """
-
     positions = {}
 
     docs = db.collection(POSITIONS_COLLECTION).stream()
@@ -25,10 +19,6 @@ def load_positions():
 
 
 def get_position(symbol):
-    """
-    Get one position from Firestore.
-    """
-
     doc = (
         db.collection(POSITIONS_COLLECTION)
         .document(symbol)
@@ -42,13 +32,9 @@ def get_position(symbol):
 
 
 def update_position(symbol, signal, price):
-    """
-    Create or replace a position in Firestore.
-    """
-
     position = {
         "side": signal,
-        "entry_price": price,
+        "entry_price": float(price),
         "signal_time": datetime.now(timezone.utc).strftime(
             "%Y-%m-%d %H:%M"
         ),
@@ -63,10 +49,6 @@ def update_position(symbol, signal, price):
 
 
 def close_position(symbol):
-    """
-    Delete a position from Firestore.
-    """
-
     doc_ref = (
         db.collection(POSITIONS_COLLECTION)
         .document(symbol)
@@ -83,14 +65,6 @@ def close_position(symbol):
 
 
 def should_send(symbol, signal):
-    """
-    Return True if a new signal should be sent.
-
-    A signal is sent when:
-    - No existing position exists, or
-    - Existing position has the opposite side.
-    """
-
     position = get_position(symbol)
 
     if position is None:
@@ -100,10 +74,6 @@ def should_send(symbol, signal):
 
 
 def update_status(symbol, status):
-    """
-    Update the status of an existing position.
-    """
-
     doc_ref = (
         db.collection(POSITIONS_COLLECTION)
         .document(symbol)
@@ -122,22 +92,6 @@ def update_status(symbol, status):
 
 
 def evaluate_position(symbol, side, current):
-    """
-    Evaluate an existing position and update its health status.
-
-    BUY:
-        Weakens if price falls below EMA20
-        OR MACD becomes negative.
-
-    SELL:
-        Weakens if price rises above EMA20
-        OR MACD becomes positive.
-
-    Returns:
-        "WEAKENING" or "HEALTHY" when status changes.
-        None when there is no change or no position.
-    """
-
     position = get_position(symbol)
 
     if position is None:

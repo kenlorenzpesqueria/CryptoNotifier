@@ -3,7 +3,7 @@ import os
 
 load_dotenv()
 
-CANDLE_LIMIT = 100
+CANDLE_LIMIT = 1000
 
 TIMEFRAME_4H = "4h"
 TIMEFRAME_1D = "1d"
