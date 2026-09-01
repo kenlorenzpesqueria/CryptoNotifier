@@ -6,9 +6,11 @@ from indicators import calculate_indicators
 from signals import get_signal
 from telegram_sender import notify
 from positions import (
-    should_send,
     get_position,
     evaluate_position,
+    get_signal_tracking,
+    save_signal_tracking,
+    clear_signal_tracking,
 )
 from logger import logger
 
@@ -16,6 +18,22 @@ from logger import logger
 def load_watchlist():
     with open("data/watchlist.json", "r") as f:
         return json.load(f)
+
+
+def buy_confirmation_passes(current_4h, current_1d):
+    return (
+        current_4h["close"] > current_4h["ema20"]
+        and current_4h["close"] > current_4h["ema50"]
+        and current_4h["macd_hist"] > 0
+        and current_1d["close"] > current_1d["ema20"]
+    )
+
+
+def buy_has_improved(current_4h, tracking):
+    return (
+        current_4h["close"] > tracking["signal_close"]
+        and current_4h["macd_hist"] > tracking["signal_macd_hist"]
+    )
 
 
 def run_scan():
@@ -137,6 +155,8 @@ def run_scan():
 
                     print(f"Position: {position_status}")
 
+                clear_signal_tracking(symbol)
+
             results.append({
                 "symbol": symbol,
                 "signal": signal,
@@ -147,7 +167,42 @@ def run_scan():
                 "position_status": position_status,
             })
 
-            if signal and should_send(symbol, signal):
+            if position:
+                print("Trade : NONE")
+                print()
+                continue
+
+            tracking = get_signal_tracking(symbol)
+
+            send_new_signal = False
+            confirmation_signal = False
+
+            if signal == "BUY":
+                if tracking and tracking.get("side") == "BUY":
+                    confirmation_passes = buy_confirmation_passes(
+                        current_4h,
+                        current_1d,
+                    )
+
+                    improved = buy_has_improved(
+                        current_4h,
+                        tracking,
+                    )
+
+                    if confirmation_passes and improved:
+                        send_new_signal = True
+                        confirmation_signal = True
+
+                else:
+                    send_new_signal = True
+
+            elif signal == "SELL":
+                if tracking and tracking.get("side") == "SELL":
+                    send_new_signal = False
+                else:
+                    send_new_signal = True
+
+            if send_new_signal:
                 conditions = (
                     buy_conditions
                     if signal == "BUY"
@@ -159,8 +214,13 @@ def run_scan():
                     for name, value in conditions.items()
                 )
 
+                if confirmation_signal:
+                    signal_title = "🚨 BUY CONFIRMATION"
+                else:
+                    signal_title = f"🚨 {signal} SIGNAL"
+
                 message = (
-                    f"🚨 {signal} SIGNAL\n\n"
+                    f"{signal_title}\n\n"
                     f"Symbol: {symbol}\n\n"
                     f"💰 Price: {current_4h['close']:.4f}\n\n"
                     f"📊 4H CONDITIONS\n"
@@ -178,11 +238,30 @@ def run_scan():
 
                 notify(message)
 
-                logger.info(f"{symbol} {signal}")
-                print(f"Trade : {signal}")
+                logger.info(
+                    f"{symbol} {signal}"
+                    f"{' confirmation' if confirmation_signal else ''}"
+                )
+
+                print(
+                    f"Trade : {signal}"
+                    f"{' CONFIRMATION' if confirmation_signal else ''}"
+                )
+
+                if signal == "BUY":
+                    save_signal_tracking(
+                        symbol,
+                        "BUY",
+                        current_4h["close"],
+                        current_4h["macd_hist"],
+                    )
 
             else:
-                print("Trade : NONE")
+                if tracking and tracking.get("side") == "BUY":
+                    print("Trade : NONE")
+                    print("BUY setup waiting for improvement")
+                else:
+                    print("Trade : NONE")
 
             print()
 

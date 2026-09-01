@@ -1,30 +1,45 @@
 import requests
-import os
+
+from google.cloud import firestore
 
 from config import BOT_TOKEN, CHAT_ID
 from positions import (
     update_position,
     close_position,
-    load_positions
+    load_positions,
 )
 
 
-OFFSET_FILE = "data/telegram_offset.json"
+db = firestore.Client(project="cryptonotifier-503415")
+
+TELEGRAM_STATE_COLLECTION = "bot_state"
+TELEGRAM_STATE_DOCUMENT = "telegram"
 
 
 def load_offset():
-    try:
-        with open(OFFSET_FILE, "r") as f:
-            return int(f.read().strip())
-    except Exception:
+    doc = (
+        db.collection(TELEGRAM_STATE_COLLECTION)
+        .document(TELEGRAM_STATE_DOCUMENT)
+        .get()
+    )
+
+    if not doc.exists:
         return None
+
+    return doc.to_dict().get("offset")
 
 
 def save_offset(offset):
-    os.makedirs("data", exist_ok=True)
-
-    with open(OFFSET_FILE, "w") as f:
-        f.write(str(offset))
+    (
+        db.collection(TELEGRAM_STATE_COLLECTION)
+        .document(TELEGRAM_STATE_DOCUMENT)
+        .set(
+            {
+                "offset": offset
+            },
+            merge=True,
+        )
+    )
 
 
 def send_message(text):
@@ -34,9 +49,9 @@ def send_message(text):
         url,
         data={
             "chat_id": CHAT_ID,
-            "text": text
+            "text": text,
         },
-        timeout=10
+        timeout=10,
     )
 
     response.raise_for_status()
@@ -47,7 +62,7 @@ def check_telegram():
 
     params = {
         "timeout": 5,
-        "allowed_updates": ["message"]
+        "allowed_updates": ["message"],
     }
 
     if offset is not None:
@@ -58,7 +73,7 @@ def check_telegram():
     response = requests.get(
         url,
         params=params,
-        timeout=15
+        timeout=15,
     )
 
     response.raise_for_status()
@@ -75,7 +90,6 @@ def check_telegram():
         return
 
     for update in updates:
-
         update_id = update["update_id"]
 
         message = update.get("message")
@@ -122,7 +136,6 @@ def check_telegram():
 
 
 def process_command(text):
-
     parts = text.split()
 
     if not parts:
@@ -140,22 +153,17 @@ def process_command(text):
 
 
 def handle_position(parts):
-
     if len(parts) == 3 and parts[2].upper() == "CLOSE":
-
         symbol = parts[1].upper()
 
         if close_position(symbol):
-
             send_message(
                 f"POSITION CLOSED\n\n"
                 f"Symbol: {symbol}\n\n"
                 f"CryptoNotifier will no longer monitor "
                 f"this position."
             )
-
         else:
-
             send_message(
                 f"NO ACTIVE POSITION\n\n"
                 f"Symbol: {symbol}\n\n"
@@ -165,7 +173,6 @@ def handle_position(parts):
         return
 
     if len(parts) != 4:
-
         send_message(
             "Invalid format.\n\n"
             "Use:\n"
@@ -180,7 +187,6 @@ def handle_position(parts):
     side = parts[2].upper()
 
     if side not in ("BUY", "SELL"):
-
         send_message(
             "Invalid position side.\n\n"
             "Use BUY or SELL.\n\n"
@@ -191,11 +197,8 @@ def handle_position(parts):
         return
 
     try:
-
         price = float(parts[3])
-
     except ValueError:
-
         send_message(
             "Invalid entry price.\n\n"
             "Example:\n"
@@ -207,7 +210,7 @@ def handle_position(parts):
     update_position(
         symbol,
         side,
-        price
+        price,
     )
 
     send_message(
@@ -222,7 +225,6 @@ def handle_position(parts):
 
 
 def send_positions():
-
     positions = load_positions()
 
     positions = {
@@ -232,38 +234,33 @@ def send_positions():
     }
 
     if not positions:
-
-        send_message(
-            "NO ACTIVE POSITIONS"
-        )
-
+        send_message("NO ACTIVE POSITIONS")
         return
 
     lines = [
         "ACTIVE POSITIONS",
-        ""
+        "",
     ]
 
     for symbol, position in positions.items():
-
         entry_price = position.get(
             "entry_price",
-            "UNKNOWN"
+            "UNKNOWN",
         )
 
         signal_time = position.get(
             "signal_time",
-            "UNKNOWN"
+            "UNKNOWN",
         )
 
         side = position.get(
             "side",
-            "UNKNOWN"
+            "UNKNOWN",
         )
 
         status = position.get(
             "status",
-            "UNKNOWN"
+            "UNKNOWN",
         )
 
         if isinstance(entry_price, (int, float)):

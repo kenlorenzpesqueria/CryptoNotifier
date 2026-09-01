@@ -4,7 +4,9 @@ from google.cloud import firestore
 
 
 db = firestore.Client(project="cryptonotifier-503415")
+
 POSITIONS_COLLECTION = "positions"
+SIGNAL_TRACKING_COLLECTION = "signal_tracking"
 
 
 def load_positions():
@@ -47,6 +49,8 @@ def update_position(symbol, signal, price):
         .set(position)
     )
 
+    clear_signal_tracking(symbol)
+
 
 def close_position(symbol):
     doc_ref = (
@@ -60,6 +64,7 @@ def close_position(symbol):
         return False
 
     doc_ref.delete()
+    clear_signal_tracking(symbol)
 
     return True
 
@@ -128,3 +133,46 @@ def evaluate_position(symbol, side, current):
         return new_status
 
     return None
+
+
+def get_signal_tracking(symbol):
+    doc = (
+        db.collection(SIGNAL_TRACKING_COLLECTION)
+        .document(symbol)
+        .get()
+    )
+
+    if not doc.exists:
+        return None
+
+    return doc.to_dict()
+
+
+def save_signal_tracking(
+    symbol,
+    signal,
+    close_price,
+    macd_hist,
+):
+    tracking = {
+        "side": signal,
+        "signal_close": float(close_price),
+        "signal_macd_hist": float(macd_hist),
+        "signal_time": datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M"
+        ),
+    }
+
+    (
+        db.collection(SIGNAL_TRACKING_COLLECTION)
+        .document(symbol)
+        .set(tracking)
+    )
+
+
+def clear_signal_tracking(symbol):
+    (
+        db.collection(SIGNAL_TRACKING_COLLECTION)
+        .document(symbol)
+        .delete()
+    )
