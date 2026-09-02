@@ -14,6 +14,12 @@ def send_daily_report(results):
     now = datetime.now(UTC)
     positions = load_positions()
 
+    positions = {
+        symbol: position
+        for symbol, position in positions.items()
+        if position.get("side") in ("BUY", "SELL")
+    }
+
     lines = [
         "📊 CRYPTONOTIFIER DAILY POSITION REPORT",
         "",
@@ -22,14 +28,24 @@ def send_daily_report(results):
         "🇵🇭 8:00 AM PHT",
         "",
         "━━━━━━━━━━━━━━━━━━",
-        "ACTIVE POSITIONS",
-        "━━━━━━━━━━━━━━━━━━",
-        "",
     ]
 
     if not positions:
-        lines.append("No active positions.")
+        lines.extend(
+            [
+                "NO ACTIVE POSITIONS",
+                "━━━━━━━━━━━━━━━━━━",
+            ]
+        )
     else:
+        lines.extend(
+            [
+                "ACTIVE POSITIONS",
+                "━━━━━━━━━━━━━━━━━━",
+                "",
+            ]
+        )
+
         result_map = {
             result["symbol"]: result
             for result in results
@@ -44,10 +60,8 @@ def send_daily_report(results):
 
             if side == "BUY":
                 icon = "🟢"
-            elif side == "SELL":
-                icon = "🔴"
             else:
-                icon = "⚪"
+                icon = "🔴"
 
             lines.append(
                 f"{icon} {symbol}\n"
@@ -69,14 +83,6 @@ def send_daily_report(results):
             )
 
             lines.append("")
-
-    lines.extend(
-        [
-            "━━━━━━━━━━━━━━━━━━",
-            "CryptoNotifier",
-            "Active positions only",
-        ]
-    )
 
     notify("\n".join(lines))
 
