@@ -2,11 +2,15 @@ import requests
 
 from google.cloud import firestore
 
-from config import BOT_TOKEN, CHAT_ID
+from config import BOT_TOKEN, CHAT_ID, CANDLE_LIMIT
+from binance import get_klines
+from indicators import calculate_indicators
 from positions import (
     update_position,
     close_position,
     load_positions,
+    get_position,
+    evaluate_position,
 )
 
 
@@ -224,6 +228,44 @@ def handle_position(parts):
     )
 
 
+def evaluate_current_position(symbol, position):
+    df_4h = get_klines(
+        symbol,
+        "4h",
+        CANDLE_LIMIT,
+    )
+
+    df_1d = get_klines(
+        symbol,
+        "1d",
+        CANDLE_LIMIT,
+    )
+
+    df_4h = calculate_indicators(df_4h)
+    df_1d = calculate_indicators(df_1d)
+
+    current_4h = df_4h.iloc[-2]
+    current_1d = df_1d.iloc[-2]
+
+    evaluate_position(
+        symbol,
+        position["side"],
+        current_4h,
+        current_1d,
+    )
+
+    updated_position = get_position(symbol)
+
+    if updated_position is None:
+        return None
+
+    return {
+        "position": updated_position,
+        "current_4h": current_4h,
+        "current_1d": current_1d,
+    }
+
+
 def send_positions():
     positions = load_positions()
 
@@ -243,38 +285,118 @@ def send_positions():
     ]
 
     for symbol, position in positions.items():
-        entry_price = position.get(
-            "entry_price",
-            "UNKNOWN",
-        )
+        try:
+            evaluation = evaluate_current_position(
+                symbol,
+                position,
+            )
 
-        signal_time = position.get(
-            "signal_time",
-            "UNKNOWN",
-        )
+            if evaluation is None:
+                continue
 
-        side = position.get(
-            "side",
-            "UNKNOWN",
-        )
+            position = evaluation["position"]
+            current_4h = evaluation["current_4h"]
+            current_1d = evaluation["current_1d"]
 
-        status = position.get(
-            "status",
-            "UNKNOWN",
-        )
+            entry_price = position.get(
+                "entry_price",
+                "UNKNOWN",
+            )
 
-        if isinstance(entry_price, (int, float)):
-            entry_text = f"{entry_price:.4f}"
-        else:
-            entry_text = str(entry_price)
+            signal_time = position.get(
+                "signal_time",
+                "UNKNOWN",
+            )
 
-        lines.append(
-            f"{symbol}\n"
-            f"Side: {side}\n"
-            f"Entry Price: {entry_text}\n"
-            f"Status: {status}\n"
-            f"Opened: {signal_time}\n"
-        )
+            side = position.get(
+                "side",
+                "UNKNOWN",
+            )
+
+            status = position.get(
+                "status",
+                "UNKNOWN",
+            )
+
+            if isinstance(entry_price, (int, float)):
+                entry_text = f"{entry_price:.4f}"
+            else:
+                entry_text = str(entry_price)
+
+            if side == "BUY":
+                price_ema20_ok = (
+                    current_4h["close"]
+                    >= current_4h["ema20"]
+                )
+
+                price_ema50_ok = (
+                    current_4h["close"]
+                    >= current_4h["ema50"]
+                )
+
+                macd_ok = (
+                    current_4h["macd_hist"] >= 0
+                )
+
+                daily_ok = (
+                    current_1d["close"]
+                    >= current_1d["ema20"]
+                )
+
+            else:
+                price_ema20_ok = (
+                    current_4h["close"]
+                    <= current_4h["ema20"]
+                )
+
+                price_ema50_ok = (
+                    current_4h["close"]
+                    <= current_4h["ema50"]
+                )
+
+                macd_ok = (
+                    current_4h["macd_hist"] <= 0
+                )
+
+                daily_ok = (
+                    current_1d["close"]
+                    <= current_1d["ema20"]
+                )
+
+            lines.extend(
+                [
+                    f"{symbol}",
+                    f"Side: {side}",
+                    f"Entry Price: {entry_text}",
+                    f"Status: {status}",
+                    f"Opened: {signal_time}",
+                    "",
+                    "CURRENT EVALUATION",
+                    f"4H Close: {current_4h['close']:.4f}",
+                    f"4H EMA20: {current_4h['ema20']:.4f}",
+                    f"4H EMA50: {current_4h['ema50']:.4f}",
+                    f"4H MACD Histogram: {current_4h['macd_hist']:.4f}",
+                    f"1D Close: {current_1d['close']:.4f}",
+                    f"1D EMA20: {current_1d['ema20']:.4f}",
+                    "",
+                    f"{'✅' if price_ema20_ok else '❌'} 4H Price vs EMA20",
+                    f"{'✅' if price_ema50_ok else '❌'} 4H Price vs EMA50",
+                    f"{'✅' if macd_ok else '❌'} 4H MACD Histogram",
+                    f"{'✅' if daily_ok else '❌'} 1D Close vs EMA20",
+                    "",
+                ]
+            )
+
+        except Exception as e:
+            lines.extend(
+                [
+                    f"{symbol}",
+                    f"Side: {position.get('side', 'UNKNOWN')}",
+                    "Status: EVALUATION ERROR",
+                    f"Error: {e}",
+                    "",
+                ]
+            )
 
     send_message(
         "\n".join(lines)
