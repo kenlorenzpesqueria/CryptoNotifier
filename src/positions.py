@@ -96,7 +96,7 @@ def update_status(symbol, status):
     return True
 
 
-def evaluate_position(symbol, side, current):
+def evaluate_position(symbol, side, current_4h, current_1d):
     position = get_position(symbol)
 
     if position is None:
@@ -106,14 +106,18 @@ def evaluate_position(symbol, side, current):
 
     if side == "BUY":
         weakening = (
-            current["close"] < current["ema20"]
-            or current["macd_hist"] < 0
+            current_4h["close"] < current_4h["ema20"]
+            or current_4h["close"] < current_4h["ema50"]
+            or current_4h["macd_hist"] < 0
+            or current_1d["close"] < current_1d["ema20"]
         )
 
     elif side == "SELL":
         weakening = (
-            current["close"] > current["ema20"]
-            or current["macd_hist"] > 0
+            current_4h["close"] > current_4h["ema20"]
+            or current_4h["close"] > current_4h["ema50"]
+            or current_4h["macd_hist"] > 0
+            or current_1d["close"] > current_1d["ema20"]
         )
 
     else:

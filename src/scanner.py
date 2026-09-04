@@ -104,34 +104,60 @@ def run_scan():
                     symbol,
                     position["side"],
                     current_4h,
+                    current_1d,
                 )
 
                 if status == "WEAKENING":
                     position_status = "WEAKENING"
 
                     if position["side"] == "BUY":
-                        price_ok = (
+                        price_ema20_ok = (
                             current_4h["close"] >= current_4h["ema20"]
                         )
+                        price_ema50_ok = (
+                            current_4h["close"] >= current_4h["ema50"]
+                        )
                         macd_ok = current_4h["macd_hist"] >= 0
+                        daily_ema20_ok = (
+                            current_1d["close"] >= current_1d["ema20"]
+                        )
+
                     else:
-                        price_ok = (
+                        price_ema20_ok = (
                             current_4h["close"] <= current_4h["ema20"]
                         )
+                        price_ema50_ok = (
+                            current_4h["close"] <= current_4h["ema50"]
+                        )
                         macd_ok = current_4h["macd_hist"] <= 0
+                        daily_ema20_ok = (
+                            current_1d["close"] <= current_1d["ema20"]
+                        )
 
                     message = (
                         f"⚠️ POSITION WEAKENING\n\n"
                         f"Symbol: {symbol}\n"
                         f"Position: {position['side']}\n\n"
-                        f"💰 Price: {current_4h['close']:.4f}\n"
-                        f"📊 EMA20: {current_4h['ema20']:.4f}\n"
-                        f"📈 EMA50: {current_4h['ema50']:.4f}\n"
+                        f"💰 CURRENT PRICE\n"
+                        f"4H Close: {current_4h['close']:.4f}\n\n"
+                        f"📊 4H INDICATORS\n"
+                        f"EMA20: {current_4h['ema20']:.4f}\n"
+                        f"EMA50: {current_4h['ema50']:.4f}\n"
                         f"MACD: {current_4h['macd']:.4f}\n"
                         f"Signal: {current_4h['macd_signal']:.4f}\n"
                         f"Histogram: {current_4h['macd_hist']:.4f}\n\n"
-                        f"{'✅' if price_ok else '❌'} Price vs EMA20\n"
-                        f"{'✅' if macd_ok else '❌'} MACD Histogram vs 0\n\n"
+                        f"📈 1D INDICATORS\n"
+                        f"Close: {current_1d['close']:.4f}\n"
+                        f"EMA20: {current_1d['ema20']:.4f}\n\n"
+                        f"📋 POSITION CHECK\n"
+                        f"{'✅' if price_ema20_ok else '❌'} "
+                        f"4H Close vs EMA20\n"
+                        f"{'✅' if price_ema50_ok else '❌'} "
+                        f"4H Close vs EMA50\n"
+                        f"{'✅' if macd_ok else '❌'} "
+                        f"4H MACD Histogram vs 0\n"
+                        f"{'✅' if daily_ema20_ok else '❌'} "
+                        f"1D Close vs EMA20\n\n"
                         f"⚠️ Review your {position['side']} position."
                     )
 
