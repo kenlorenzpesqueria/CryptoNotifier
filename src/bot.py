@@ -223,8 +223,8 @@ def handle_position(parts):
         f"Side: {side}\n"
         f"Entry Price: {price:.4f}\n"
         f"Status: HEALTHY\n\n"
-        f"CryptoNotifier will monitor this "
-        f"position on the next scan."
+        f"CryptoNotifier will evaluate this "
+        f"position every 4 hours."
     )
 
 
@@ -244,6 +244,7 @@ def evaluate_current_position(symbol, position):
     df_4h = calculate_indicators(df_4h)
     df_1d = calculate_indicators(df_1d)
 
+    previous_4h = df_4h.iloc[-3]
     current_4h = df_4h.iloc[-2]
     current_1d = df_1d.iloc[-2]
 
@@ -261,6 +262,7 @@ def evaluate_current_position(symbol, position):
 
     return {
         "position": updated_position,
+        "previous_4h": previous_4h,
         "current_4h": current_4h,
         "current_1d": current_1d,
     }
@@ -280,7 +282,7 @@ def send_positions():
         return
 
     lines = [
-        "ACTIVE POSITIONS",
+        "📊 ACTIVE POSITION EVALUATION",
         "",
     ]
 
@@ -295,6 +297,7 @@ def send_positions():
                 continue
 
             position = evaluation["position"]
+            previous_4h = evaluation["previous_4h"]
             current_4h = evaluation["current_4h"]
             current_1d = evaluation["current_1d"]
 
@@ -322,6 +325,13 @@ def send_positions():
                 entry_text = f"{entry_price:.4f}"
             else:
                 entry_text = str(entry_price)
+
+            if current_4h["close"] > previous_4h["close"]:
+                direction = "⬆️"
+            elif current_4h["close"] < previous_4h["close"]:
+                direction = "⬇️"
+            else:
+                direction = "➡️"
 
             if side == "BUY":
                 price_ema20_ok = (
@@ -365,24 +375,46 @@ def send_positions():
 
             lines.extend(
                 [
-                    f"{symbol}",
-                    f"Side: {side}",
+                    f"{'🟢' if side == 'BUY' else '🔴'} {symbol}",
+                    f"Position: {side}",
                     f"Entry Price: {entry_text}",
-                    f"Status: {status}",
                     f"Opened: {signal_time}",
+                    f"Status: {status}",
                     "",
-                    "CURRENT EVALUATION",
-                    f"4H Close: {current_4h['close']:.4f}",
-                    f"4H EMA20: {current_4h['ema20']:.4f}",
-                    f"4H EMA50: {current_4h['ema50']:.4f}",
-                    f"4H MACD Histogram: {current_4h['macd_hist']:.4f}",
-                    f"1D Close: {current_1d['close']:.4f}",
-                    f"1D EMA20: {current_1d['ema20']:.4f}",
+                    "💰 CURRENT PRICE",
+                    f"4H Close: "
+                    f"{current_4h['close']:.4f} "
+                    f"{direction}",
+                    f"Previous 4H Close: "
+                    f"{previous_4h['close']:.4f}",
                     "",
-                    f"{'✅' if price_ema20_ok else '❌'} 4H Price vs EMA20",
-                    f"{'✅' if price_ema50_ok else '❌'} 4H Price vs EMA50",
-                    f"{'✅' if macd_ok else '❌'} 4H MACD Histogram",
-                    f"{'✅' if daily_ok else '❌'} 1D Close vs EMA20",
+                    "📊 4H INDICATORS",
+                    f"EMA20: "
+                    f"{current_4h['ema20']:.4f}",
+                    f"EMA50: "
+                    f"{current_4h['ema50']:.4f}",
+                    f"MACD: "
+                    f"{current_4h['macd']:.4f}",
+                    f"Signal: "
+                    f"{current_4h['macd_signal']:.4f}",
+                    f"Histogram: "
+                    f"{current_4h['macd_hist']:.4f}",
+                    "",
+                    "📈 1D INDICATORS",
+                    f"Close: "
+                    f"{current_1d['close']:.4f}",
+                    f"EMA20: "
+                    f"{current_1d['ema20']:.4f}",
+                    "",
+                    "📋 POSITION CHECK",
+                    f"{'✅' if price_ema20_ok else '❌'} "
+                    f"4H Price vs EMA20",
+                    f"{'✅' if price_ema50_ok else '❌'} "
+                    f"4H Price vs EMA50",
+                    f"{'✅' if macd_ok else '❌'} "
+                    f"4H MACD Histogram vs 0",
+                    f"{'✅' if daily_ok else '❌'} "
+                    f"1D Close vs EMA20",
                     "",
                 ]
             )
