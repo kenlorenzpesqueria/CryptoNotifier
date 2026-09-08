@@ -12,6 +12,7 @@ UTC = timezone.utc
 
 def send_daily_report(results):
     now = datetime.now(UTC)
+
     positions = load_positions()
 
     positions = {
@@ -31,20 +32,16 @@ def send_daily_report(results):
     ]
 
     if not positions:
-        lines.extend(
-            [
-                "NO ACTIVE POSITIONS",
-                "━━━━━━━━━━━━━━━━━━",
-            ]
-        )
+        lines.extend([
+            "NO ACTIVE POSITIONS",
+            "━━━━━━━━━━━━━━━━━━",
+        ])
     else:
-        lines.extend(
-            [
-                "ACTIVE POSITIONS",
-                "━━━━━━━━━━━━━━━━━━",
-                "",
-            ]
-        )
+        lines.extend([
+            "ACTIVE POSITIONS",
+            "━━━━━━━━━━━━━━━━━━",
+            "",
+        ])
 
         result_map = {
             result["symbol"]: result
@@ -55,13 +52,16 @@ def send_daily_report(results):
             result = result_map.get(symbol)
 
             side = position.get("side", "UNKNOWN")
-            entry_price = position.get("entry_price", "UNKNOWN")
-            status = position.get("status", "UNKNOWN")
+            entry_price = position.get(
+                "entry_price",
+                "UNKNOWN",
+            )
+            status = position.get(
+                "status",
+                "UNKNOWN",
+            )
 
-            if side == "BUY":
-                icon = "🟢"
-            else:
-                icon = "🔴"
+            icon = "🟢" if side == "BUY" else "🔴"
 
             lines.append(
                 f"{icon} {symbol}\n"
@@ -70,13 +70,11 @@ def send_daily_report(results):
             )
 
             if result:
-                lines.extend(
-                    [
-                        f"   Current Price: {result['price']:.4f}",
-                        f"   4H EMA20: {result['ema20_4h']:.4f}",
-                        f"   1D EMA20: {result['ema20_1d']:.4f}",
-                    ]
-                )
+                lines.extend([
+                    f"   Current Price: {result['price']:.5f}",
+                    f"   4H EMA20: {result['ema20_4h']:.5f}",
+                    f"   1D EMA20: {result['ema20_1d']:.5f}",
+                ])
 
             lines.append(
                 f"   Status: {status}"
@@ -91,23 +89,79 @@ def send_daily_report(results):
 
 
 def main():
-    logger.info("Bot Started")
-    print("CryptoNotifier starting...\n")
-
-    check_telegram()
-
-    results = run_scan()
-
     now = datetime.now(UTC)
 
-    print(f"DEBUG UTC TIME: {now.isoformat()}")
-    print(f"DEBUG UTC HOUR: {now.hour}")
-    print(f"DEBUG UTC MINUTE: {now.minute}")
+    logger.info(
+        f"CryptoNotifier MT5 check started at {now.isoformat()}"
+    )
 
-    if now.hour == 0:
-        send_daily_report(results)
+    print("========================================")
+    print(" CryptoNotifier MT5")
+    print(" One-Shot 4H Checker")
+    print("========================================")
+    print()
+    print(f"UTC Time: {now.isoformat()}")
+    print()
 
-    logger.info("Bot Finished")
+    try:
+        try:
+            check_telegram()
+            print("Telegram commands checked.")
+        except Exception as e:
+            logger.exception("Telegram check failed")
+            print(f"Telegram error: {e}")
+
+        print()
+        print("Starting MT5 market scan...")
+
+        results = run_scan()
+
+        print()
+        print("MT5 market scan completed.")
+
+        if now.hour == 0:
+            try:
+                send_daily_report(results)
+            except Exception as e:
+                logger.exception(
+                    "Daily report failed"
+                )
+                print(
+                    f"Daily report error: {e}"
+                )
+
+        print()
+        print("========================================")
+        print(" Check completed.")
+        print(" CryptoNotifier MT5 exiting.")
+        print("========================================")
+
+        logger.info(
+            "CryptoNotifier MT5 check completed"
+        )
+
+    except KeyboardInterrupt:
+        print()
+        print("CryptoNotifier stopped manually.")
+
+        logger.info(
+            "CryptoNotifier stopped manually"
+        )
+
+    except Exception as e:
+        logger.exception(
+            "CryptoNotifier MT5 check failed"
+        )
+
+        print()
+        print(
+            f"CryptoNotifier MT5 check failed: {e}"
+        )
+
+        notify(
+            "🚨 CRYPTONOTIFIER MT5 ERROR\n\n"
+            f"{e}"
+        )
 
 
 if __name__ == "__main__":

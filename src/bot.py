@@ -3,7 +3,7 @@ import requests
 from google.cloud import firestore
 
 from config import BOT_TOKEN, CHAT_ID, CANDLE_LIMIT
-from binance import get_klines
+from mt5_data import get_klines, get_last_completed_index
 from indicators import calculate_indicators
 from positions import (
     update_position,
@@ -11,12 +11,13 @@ from positions import (
     load_positions,
     get_position,
     evaluate_position,
+    clear_signal_tracking,
 )
 
 
 db = firestore.Client(project="cryptonotifier-503415")
 
-TELEGRAM_STATE_COLLECTION = "bot_state"
+TELEGRAM_STATE_COLLECTION = "mt5_bot_state"
 TELEGRAM_STATE_DOCUMENT = "telegram"
 
 
@@ -38,9 +39,7 @@ def save_offset(offset):
         db.collection(TELEGRAM_STATE_COLLECTION)
         .document(TELEGRAM_STATE_DOCUMENT)
         .set(
-            {
-                "offset": offset
-            },
+            {"offset": offset},
             merge=True,
         )
     )
@@ -135,7 +134,6 @@ def check_telegram():
                 f"Failed to process Telegram update "
                 f"{update_id}: {e}"
             )
-
             raise
 
 
@@ -155,23 +153,57 @@ def process_command(text):
         send_positions()
         return
 
+    if command == "/close":
+        handle_close(parts)
+        return
+
+
+def handle_close(parts):
+    if len(parts) != 2:
+        send_message(
+            "Invalid format.\n\n"
+            "Use:\n"
+            "/close EURUSD"
+        )
+        return
+
+    symbol = parts[1].upper()
+
+    if close_position(symbol):
+        clear_signal_tracking(symbol)
+
+        send_message(
+            "POSITION CLOSED\n\n"
+            f"Symbol: {symbol}\n\n"
+            "CryptoNotifier will no longer monitor "
+            "this position."
+        )
+    else:
+        send_message(
+            "NO ACTIVE POSITION\n\n"
+            f"Symbol: {symbol}\n\n"
+            "No position was found."
+        )
+
 
 def handle_position(parts):
     if len(parts) == 3 and parts[2].upper() == "CLOSE":
         symbol = parts[1].upper()
 
         if close_position(symbol):
+            clear_signal_tracking(symbol)
+
             send_message(
-                f"POSITION CLOSED\n\n"
+                "POSITION CLOSED\n\n"
                 f"Symbol: {symbol}\n\n"
-                f"CryptoNotifier will no longer monitor "
-                f"this position."
+                "CryptoNotifier will no longer monitor "
+                "this position."
             )
         else:
             send_message(
-                f"NO ACTIVE POSITION\n\n"
+                "NO ACTIVE POSITION\n\n"
                 f"Symbol: {symbol}\n\n"
-                f"No position was found."
+                "No position was found."
             )
 
         return
@@ -180,11 +212,10 @@ def handle_position(parts):
         send_message(
             "Invalid format.\n\n"
             "Use:\n"
-            "/position BTCUSDT BUY 80457.60\n"
-            "/position BTCUSDT SELL 80457.60\n"
-            "/position BTCUSDT CLOSE"
+            "/position EURUSD BUY 1.16130\n"
+            "/position EURUSD SELL 1.16130\n"
+            "/position EURUSD CLOSE"
         )
-
         return
 
     symbol = parts[1].upper()
@@ -195,9 +226,8 @@ def handle_position(parts):
             "Invalid position side.\n\n"
             "Use BUY or SELL.\n\n"
             "Example:\n"
-            "/position BTCUSDT BUY 80457.60"
+            "/position EURUSD BUY 1.16130"
         )
-
         return
 
     try:
@@ -206,9 +236,8 @@ def handle_position(parts):
         send_message(
             "Invalid entry price.\n\n"
             "Example:\n"
-            "/position BTCUSDT BUY 80457.60"
+            "/position EURUSD BUY 1.16130"
         )
-
         return
 
     update_position(
@@ -217,14 +246,16 @@ def handle_position(parts):
         price,
     )
 
+    clear_signal_tracking(symbol)
+
     send_message(
-        f"POSITION RECORDED\n\n"
+        "POSITION RECORDED\n\n"
         f"Symbol: {symbol}\n"
         f"Side: {side}\n"
         f"Entry Price: {price:.4f}\n"
-        f"Status: HEALTHY\n\n"
-        f"CryptoNotifier will evaluate this "
-        f"position every 4 hours."
+        "Status: HEALTHY\n\n"
+        "CryptoNotifier will evaluate this "
+        "position every 4 hours."
     )
 
 
@@ -244,9 +275,26 @@ def evaluate_current_position(symbol, position):
     df_4h = calculate_indicators(df_4h)
     df_1d = calculate_indicators(df_1d)
 
-    previous_4h = df_4h.iloc[-3]
-    current_4h = df_4h.iloc[-2]
-    current_1d = df_1d.iloc[-2]
+    current_4h_index = get_last_completed_index(
+        df_4h,
+        "4h",
+        symbol,
+    )
+
+    current_1d_index = get_last_completed_index(
+        df_1d,
+        "1d",
+        symbol,
+    )
+
+    if current_4h_index < 1:
+        raise RuntimeError(
+            f"{symbol}: insufficient completed H4 candles"
+        )
+
+    previous_4h = df_4h.iloc[current_4h_index - 1]
+    current_4h = df_4h.iloc[current_4h_index]
+    current_1d = df_1d.iloc[current_1d_index]
 
     evaluate_position(
         symbol,
@@ -408,13 +456,13 @@ def send_positions():
                     "",
                     "📋 POSITION CHECK",
                     f"{'✅' if price_ema20_ok else '❌'} "
-                    f"4H Price vs EMA20",
+                    "4H Price vs EMA20",
                     f"{'✅' if price_ema50_ok else '❌'} "
-                    f"4H Price vs EMA50",
+                    "4H Price vs EMA50",
                     f"{'✅' if macd_ok else '❌'} "
-                    f"4H MACD Histogram vs 0",
+                    "4H MACD Histogram vs 0",
                     f"{'✅' if daily_ok else '❌'} "
-                    f"1D Close vs EMA20",
+                    "1D Close vs EMA20",
                     "",
                 ]
             )
@@ -422,14 +470,10 @@ def send_positions():
         except Exception as e:
             lines.extend(
                 [
-                    f"{symbol}",
-                    f"Side: {position.get('side', 'UNKNOWN')}",
-                    "Status: EVALUATION ERROR",
-                    f"Error: {e}",
+                    f"⚠️ {symbol}",
+                    f"Unable to evaluate position: {e}",
                     "",
                 ]
             )
 
-    send_message(
-        "\n".join(lines)
-    )
+    send_message("\n".join(lines))

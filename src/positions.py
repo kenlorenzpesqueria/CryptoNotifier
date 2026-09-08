@@ -5,8 +5,8 @@ from google.cloud import firestore
 
 db = firestore.Client(project="cryptonotifier-503415")
 
-POSITIONS_COLLECTION = "positions"
-SIGNAL_TRACKING_COLLECTION = "signal_tracking"
+POSITIONS_COLLECTION = "mt5_positions"
+SIGNAL_TRACKING_COLLECTION = "mt5_signal_tracking"
 
 
 def load_positions():
@@ -157,6 +157,7 @@ def save_signal_tracking(
     signal,
     close_price,
     macd_hist,
+    h4_time=None,
 ):
     tracking = {
         "side": signal,
@@ -166,6 +167,9 @@ def save_signal_tracking(
             "%Y-%m-%d %H:%M"
         ),
     }
+
+    if h4_time is not None:
+        tracking["h4_time"] = str(h4_time)
 
     (
         db.collection(SIGNAL_TRACKING_COLLECTION)

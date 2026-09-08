@@ -1,8 +1,4 @@
-def get_signal(df_4h, df_1d):
-    previous_4h = df_4h.iloc[-3]
-    current_4h = df_4h.iloc[-2]
-    current_1d = df_1d.iloc[-2]
-
+def get_signal(previous_4h, current_4h, current_1d):
     buy = (
         previous_4h["close"] < previous_4h["ema20"]
         and current_4h["close"] > current_4h["ema20"]

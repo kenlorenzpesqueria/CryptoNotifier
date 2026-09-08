@@ -1,6 +1,14 @@
 import json
+import sys
+from pathlib import Path
 
-from binance import get_klines
+SRC_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SRC_DIR.parent
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from mt5_data import get_klines, get_last_completed_index
 from config import CANDLE_LIMIT
 from indicators import calculate_indicators
 from signals import get_signal
@@ -17,7 +25,9 @@ from logger import logger
 
 
 def load_watchlist():
-    with open("data/watchlist.json", "r") as f:
+    watchlist_file = PROJECT_DIR / "data" / "watchlist.json"
+
+    with open(watchlist_file, "r") as f:
         return json.load(f)
 
 
@@ -60,7 +70,6 @@ def send_position_evaluation(
         price_ema50_ok = current_4h["close"] >= current_4h["ema50"]
         macd_ok = current_4h["macd_hist"] >= 0
         daily_ok = current_1d["close"] >= current_1d["ema20"]
-
     else:
         price_ema20_ok = current_4h["close"] <= current_4h["ema20"]
         price_ema50_ok = current_4h["close"] <= current_4h["ema50"]
@@ -111,6 +120,7 @@ def send_position_evaluation(
 
 def run_scan():
     watchlist = load_watchlist()
+
     active_positions = load_positions()
 
     active_positions = {
@@ -119,14 +129,16 @@ def run_scan():
         if position.get("side") in ("BUY", "SELL")
     }
 
-    symbols = list(dict.fromkeys(
-        watchlist + list(active_positions.keys())
-    ))
+    symbols = list(
+        dict.fromkeys(
+            watchlist + list(active_positions.keys())
+        )
+    )
 
     results = []
 
     logger.info(f"Scanning {len(symbols)} symbols")
-    print(f"Watching {len(symbols)} coins\n")
+    print(f"Watching {len(symbols)} forex pairs\n")
 
     errors = []
 
@@ -146,34 +158,79 @@ def run_scan():
                 CANDLE_LIMIT,
             )
 
+            if df_4h is None or df_1d is None:
+                raise RuntimeError(
+                    f"{symbol}: unable to retrieve MT5 market data"
+                )
+
+            if len(df_4h) < 2:
+                raise RuntimeError(
+                    f"{symbol}: insufficient H4 candle data"
+                )
+
+            if len(df_1d) < 1:
+                raise RuntimeError(
+                    f"{symbol}: insufficient D1 candle data"
+                )
+
             df_4h = calculate_indicators(df_4h)
             df_1d = calculate_indicators(df_1d)
 
-            previous_4h = df_4h.iloc[-3]
-            current_4h = df_4h.iloc[-2]
-            current_1d = df_1d.iloc[-2]
+            current_4h_index = get_last_completed_index(
+                df_4h,
+                "4h",
+                symbol,
+            )
+
+            current_1d_index = get_last_completed_index(
+                df_1d,
+                "1d",
+                symbol,
+            )
+
+            if current_4h_index < 1:
+                raise RuntimeError(
+                    f"{symbol}: insufficient completed H4 candles"
+                )
+
+            previous_4h = df_4h.iloc[current_4h_index - 1]
+            current_4h = df_4h.iloc[current_4h_index]
+            current_1d = df_1d.iloc[current_1d_index]
+
+            completed_h4_time = current_4h["open_time"]
+
+            print(
+                f"H4 Candle : {completed_h4_time}"
+            )
 
             print(
                 f"4H Close : {current_4h['close']}"
             )
+
             print(
                 f"4H EMA20 : {current_4h['ema20']:.4f}"
             )
+
             print(
                 f"4H EMA50 : {current_4h['ema50']:.4f}"
             )
+
             print(
                 f"1D Close : {current_1d['close']:.4f}"
             )
+
             print(
                 f"1D EMA20 : {current_1d['ema20']:.4f}"
             )
+
             print(
                 f"MACD     : {current_4h['macd']:.4f}"
             )
+
             print(
                 f"Signal   : {current_4h['macd_signal']:.4f}"
             )
+
             print(
                 f"Histogram: {current_4h['macd_hist']:.4f}"
             )
@@ -196,6 +253,7 @@ def run_scan():
                     continue
 
                 position = updated_position
+
                 position_status = position.get(
                     "status",
                     "UNKNOWN",
@@ -243,6 +301,7 @@ def run_scan():
                     ),
                     "position": position["side"],
                     "position_status": position_status,
+                    "h4_time": str(completed_h4_time),
                 })
 
                 print("Trade : NONE")
@@ -251,19 +310,24 @@ def run_scan():
                 continue
 
             signal = get_signal(
-                df_4h,
-                df_1d,
+                previous_4h,
+                current_4h,
+                current_1d,
             )
 
             buy_conditions = {
                 "Previous 4H close below EMA20":
                     previous_4h["close"] < previous_4h["ema20"],
+
                 "Current 4H close above EMA20":
                     current_4h["close"] > current_4h["ema20"],
+
                 "Current 4H close above EMA50":
                     current_4h["close"] > current_4h["ema50"],
+
                 "4H MACD Histogram above 0":
                     current_4h["macd_hist"] > 0,
+
                 "1D close above EMA20":
                     current_1d["close"] > current_1d["ema20"],
             }
@@ -271,12 +335,16 @@ def run_scan():
             sell_conditions = {
                 "Previous 4H close above EMA20":
                     previous_4h["close"] > previous_4h["ema20"],
+
                 "Current 4H close below EMA20":
                     current_4h["close"] < current_4h["ema20"],
+
                 "Current 4H close below EMA50":
                     current_4h["close"] < current_4h["ema50"],
+
                 "4H MACD Histogram below 0":
                     current_4h["macd_hist"] < 0,
+
                 "1D close below EMA20":
                     current_1d["close"] < current_1d["ema20"],
             }
@@ -303,6 +371,7 @@ def run_scan():
                 ),
                 "position": None,
                 "position_status": None,
+                "h4_time": str(completed_h4_time),
             })
 
             tracking = get_signal_tracking(symbol)
@@ -358,6 +427,8 @@ def run_scan():
                     f"Symbol: {symbol}\n\n"
                     f"💰 Price: "
                     f"{current_4h['close']:.4f}\n\n"
+                    f"🕛 Completed H4 Candle: "
+                    f"{completed_h4_time}\n\n"
                     f"📊 4H CONDITIONS\n"
                     f"{condition_text}\n\n"
                     f"📈 INDICATORS\n"
@@ -390,13 +461,13 @@ def run_scan():
                     f"{' CONFIRMATION' if confirmation_signal else ''}"
                 )
 
-                if signal == "BUY":
-                    save_signal_tracking(
-                        symbol,
-                        "BUY",
-                        current_4h["close"],
-                        current_4h["macd_hist"],
-                    )
+                save_signal_tracking(
+                    symbol,
+                    signal,
+                    current_4h["close"],
+                    current_4h["macd_hist"],
+                    completed_h4_time,
+                )
 
             else:
                 if (
