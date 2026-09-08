@@ -2,7 +2,7 @@ import sys
 
 sys.path.insert(0, "src")
 
-from mt5_data import get_klines
+from mt5_data import get_klines, get_last_completed_index
 from indicators import calculate_indicators
 from signals import get_signal
 
@@ -31,16 +31,36 @@ def main():
             df_4h = calculate_indicators(df_4h)
             df_1d = calculate_indicators(df_1d)
 
-            # Last completed H4 candle
-            previous_4h = df_4h.iloc[-3]
-            current_4h = df_4h.iloc[-2]
+            completed_4h_index = get_last_completed_index(
+                df_4h,
+                "4h",
+                symbol,
+            )
 
-            # Last completed D1 candle
-            current_1d = df_1d.iloc[-2]
+            completed_1d_index = get_last_completed_index(
+                df_1d,
+                "1d",
+                symbol,
+            )
+
+            if completed_4h_index < 1:
+                raise RuntimeError(
+                    "Not enough completed H4 candles"
+                )
+
+            if completed_1d_index < 0:
+                raise RuntimeError(
+                    "No completed D1 candle available"
+                )
+
+            previous_4h = df_4h.iloc[completed_4h_index - 1]
+            current_4h = df_4h.iloc[completed_4h_index]
+            current_1d = df_1d.iloc[completed_1d_index]
 
             signal = get_signal(
-                df_4h,
-                df_1d,
+                previous_4h,
+                current_4h,
+                current_1d,
             )
 
             print(
