@@ -2,5 +2,12 @@
   "EURUSD",
   "GBPUSD",
   "USDJPY",
-  "AUDUSD"
+  "AUDUSD",
+  "BTCUSD",
+  "ETHUSD",
+  "XAUUSD",
+  "XAGUSD",
+  "US30",
+  "US100",
+  "SPX500"
 ]
