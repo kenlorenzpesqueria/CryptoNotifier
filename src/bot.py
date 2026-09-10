@@ -1,5 +1,4 @@
 import requests
-
 from google.cloud import firestore
 
 from config import BOT_TOKEN, CHAT_ID, CANDLE_LIMIT
@@ -19,6 +18,8 @@ db = firestore.Client(project="cryptonotifier-503415")
 
 TELEGRAM_STATE_COLLECTION = "mt5_bot_state"
 TELEGRAM_STATE_DOCUMENT = "telegram"
+
+BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
 def load_offset():
@@ -46,10 +47,8 @@ def save_offset(offset):
 
 
 def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
     response = requests.post(
-        url,
+        f"{BASE_URL}/sendMessage",
         data={
             "chat_id": CHAT_ID,
             "text": text,
@@ -71,10 +70,8 @@ def check_telegram():
     if offset is not None:
         params["offset"] = offset
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-
     response = requests.get(
-        url,
+        f"{BASE_URL}/getUpdates",
         params=params,
         timeout=15,
     )
@@ -89,7 +86,7 @@ def check_telegram():
     updates = data.get("result", [])
 
     if not updates:
-        print("No new Telegram messages.")
+        print("No new MT5 Telegram messages.")
         return
 
     for update in updates:
@@ -116,13 +113,12 @@ def check_telegram():
             continue
 
         print(
-            f"Processing Telegram message "
+            f"Processing MT5 Telegram message "
             f"(update_id={update_id}): {text}"
         )
 
         try:
             process_command(text)
-
             save_offset(update_id + 1)
 
             print(
@@ -143,17 +139,17 @@ def process_command(text):
     if not parts:
         return
 
-    command = parts[0].lower()
+    command = parts[0].lower().split("@")[0]
 
-    if command == "/position":
+    if command == "/mt5position":
         handle_position(parts)
         return
 
-    if command == "/positions":
+    if command == "/mt5positions":
         send_positions()
         return
 
-    if command == "/close":
+    if command == "/mt5close":
         handle_close(parts)
         return
 
@@ -163,7 +159,7 @@ def handle_close(parts):
         send_message(
             "Invalid format.\n\n"
             "Use:\n"
-            "/close EURUSD"
+            "/mt5close EURUSD"
         )
         return
 
@@ -173,14 +169,14 @@ def handle_close(parts):
         clear_signal_tracking(symbol)
 
         send_message(
-            "POSITION CLOSED\n\n"
+            "MT5 POSITION CLOSED\n\n"
             f"Symbol: {symbol}\n\n"
             "CryptoNotifier will no longer monitor "
-            "this position."
+            "this MT5 position."
         )
     else:
         send_message(
-            "NO ACTIVE POSITION\n\n"
+            "NO ACTIVE MT5 POSITION\n\n"
             f"Symbol: {symbol}\n\n"
             "No position was found."
         )
@@ -194,14 +190,14 @@ def handle_position(parts):
             clear_signal_tracking(symbol)
 
             send_message(
-                "POSITION CLOSED\n\n"
+                "MT5 POSITION CLOSED\n\n"
                 f"Symbol: {symbol}\n\n"
                 "CryptoNotifier will no longer monitor "
-                "this position."
+                "this MT5 position."
             )
         else:
             send_message(
-                "NO ACTIVE POSITION\n\n"
+                "NO ACTIVE MT5 POSITION\n\n"
                 f"Symbol: {symbol}\n\n"
                 "No position was found."
             )
@@ -212,9 +208,9 @@ def handle_position(parts):
         send_message(
             "Invalid format.\n\n"
             "Use:\n"
-            "/position EURUSD BUY 1.16130\n"
-            "/position EURUSD SELL 1.16130\n"
-            "/position EURUSD CLOSE"
+            "/mt5position EURUSD BUY 1.16130\n"
+            "/mt5position EURUSD SELL 1.16130\n"
+            "/mt5position EURUSD CLOSE"
         )
         return
 
@@ -226,7 +222,7 @@ def handle_position(parts):
             "Invalid position side.\n\n"
             "Use BUY or SELL.\n\n"
             "Example:\n"
-            "/position EURUSD BUY 1.16130"
+            "/mt5position EURUSD BUY 1.16130"
         )
         return
 
@@ -236,7 +232,7 @@ def handle_position(parts):
         send_message(
             "Invalid entry price.\n\n"
             "Example:\n"
-            "/position EURUSD BUY 1.16130"
+            "/mt5position EURUSD BUY 1.16130"
         )
         return
 
@@ -249,13 +245,13 @@ def handle_position(parts):
     clear_signal_tracking(symbol)
 
     send_message(
-        "POSITION RECORDED\n\n"
+        "MT5 POSITION RECORDED\n\n"
         f"Symbol: {symbol}\n"
         f"Side: {side}\n"
         f"Entry Price: {price:.4f}\n"
         "Status: HEALTHY\n\n"
         "CryptoNotifier will evaluate this "
-        "position every 4 hours."
+        "MT5 position every 4 hours."
     )
 
 
@@ -326,11 +322,11 @@ def send_positions():
     }
 
     if not positions:
-        send_message("NO ACTIVE POSITIONS")
+        send_message("NO ACTIVE MT5 POSITIONS")
         return
 
     lines = [
-        "📊 ACTIVE POSITION EVALUATION",
+        "📊 ACTIVE MT5 POSITION EVALUATION",
         "",
     ]
 
@@ -471,7 +467,7 @@ def send_positions():
             lines.extend(
                 [
                     f"⚠️ {symbol}",
-                    f"Unable to evaluate position: {e}",
+                    f"Unable to evaluate MT5 position: {e}",
                     "",
                 ]
             )
