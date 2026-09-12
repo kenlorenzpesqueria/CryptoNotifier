@@ -1,4 +1,4 @@
-import json
+﻿import json
 
 from binance import get_klines
 from config import CANDLE_LIMIT
@@ -17,7 +17,7 @@ from logger import logger
 
 
 def load_watchlist():
-    with open("data/watchlist.json", "r") as f:
+    with open("data/watchlist.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -49,11 +49,11 @@ def send_position_evaluation(
     status = position.get("status", "UNKNOWN")
 
     if current_4h["close"] > previous_4h["close"]:
-        direction = "⬆️"
+        direction = "â¬†ï¸"
     elif current_4h["close"] < previous_4h["close"]:
-        direction = "⬇️"
+        direction = "â¬‡ï¸"
     else:
-        direction = "➡️"
+        direction = "âž¡ï¸"
 
     if side == "BUY":
         price_ema20_ok = current_4h["close"] >= current_4h["ema20"]
@@ -74,30 +74,30 @@ def send_position_evaluation(
     )
 
     message = (
-        f"📊 POSITION EVALUATION\n\n"
+        f"ðŸ“Š POSITION EVALUATION\n\n"
         f"Symbol: {symbol}\n"
         f"Position: {side}\n"
         f"Entry Price: {entry_text}\n\n"
-        f"💰 CURRENT PRICE\n"
+        f"ðŸ’° CURRENT PRICE\n"
         f"4H Close: {current_4h['close']:.4f} {direction}\n"
         f"Previous 4H Close: {previous_4h['close']:.4f}\n\n"
-        f"📊 4H INDICATORS\n"
+        f"ðŸ“Š 4H INDICATORS\n"
         f"EMA20: {current_4h['ema20']:.4f}\n"
         f"EMA50: {current_4h['ema50']:.4f}\n"
         f"MACD: {current_4h['macd']:.4f}\n"
         f"Signal: {current_4h['macd_signal']:.4f}\n"
         f"Histogram: {current_4h['macd_hist']:.4f}\n\n"
-        f"📈 1D INDICATORS\n"
+        f"ðŸ“ˆ 1D INDICATORS\n"
         f"Close: {current_1d['close']:.4f}\n"
         f"EMA20: {current_1d['ema20']:.4f}\n\n"
-        f"📋 POSITION CHECK\n"
-        f"{'✅' if price_ema20_ok else '❌'} "
+        f"ðŸ“‹ POSITION CHECK\n"
+        f"{'âœ…' if price_ema20_ok else 'âŒ'} "
         f"4H Price vs EMA20\n"
-        f"{'✅' if price_ema50_ok else '❌'} "
+        f"{'âœ…' if price_ema50_ok else 'âŒ'} "
         f"4H Price vs EMA50\n"
-        f"{'✅' if macd_ok else '❌'} "
+        f"{'âœ…' if macd_ok else 'âŒ'} "
         f"4H MACD Histogram vs 0\n"
-        f"{'✅' if daily_ok else '❌'} "
+        f"{'âœ…' if daily_ok else 'âŒ'} "
         f"1D Close vs EMA20\n\n"
         f"Status: {status}"
     )
@@ -344,23 +344,23 @@ def run_scan():
                 )
 
                 condition_text = "\n".join(
-                    f"{'✅' if value else '❌'} {name}"
+                    f"{'âœ…' if value else 'âŒ'} {name}"
                     for name, value in conditions.items()
                 )
 
                 if confirmation_signal:
-                    signal_title = "🚨 BUY CONFIRMATION"
+                    signal_title = "ðŸš¨ BUY CONFIRMATION"
                 else:
-                    signal_title = f"🚨 {signal} SIGNAL"
+                    signal_title = f"ðŸš¨ {signal} SIGNAL"
 
                 message = (
                     f"{signal_title}\n\n"
                     f"Symbol: {symbol}\n\n"
-                    f"💰 Price: "
+                    f"ðŸ’° Price: "
                     f"{current_4h['close']:.4f}\n\n"
-                    f"📊 4H CONDITIONS\n"
+                    f"ðŸ“Š 4H CONDITIONS\n"
                     f"{condition_text}\n\n"
-                    f"📈 INDICATORS\n"
+                    f"ðŸ“ˆ INDICATORS\n"
                     f"4H EMA20: "
                     f"{current_4h['ema20']:.4f}\n"
                     f"4H EMA50: "
@@ -375,7 +375,7 @@ def run_scan():
                     f"{current_4h['macd_signal']:.4f}\n"
                     f"Histogram: "
                     f"{current_4h['macd_hist']:.4f}\n\n"
-                    f"🎯 Recommendation: {signal}"
+                    f"ðŸŽ¯ Recommendation: {signal}"
                 )
 
                 notify(message)
@@ -425,7 +425,7 @@ def run_scan():
 
     if errors:
         message = (
-            "🚨 CRYPTONOTIFIER ERROR\n\n"
+            "ðŸš¨ CRYPTONOTIFIER ERROR\n\n"
             + "\n".join(errors)
         )
 
