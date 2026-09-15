@@ -17,3 +17,4 @@ tzdata==2026.3
 tzlocal==5.4.4
 urllib3==2.7.0
 google-cloud-firestore
+MetaTrader5==5.0.6180
