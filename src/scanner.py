@@ -27,7 +27,7 @@ from logger import logger
 def load_watchlist():
     watchlist_file = PROJECT_DIR / "data" / "watchlist.json"
 
-    with open(watchlist_file, "r") as f:
+    with open(watchlist_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
 

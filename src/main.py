@@ -7,15 +7,27 @@ from bot import check_telegram
 from telegram_sender import notify
 from logger import logger
 from positions import load_positions
-from mt5_data import get_klines, get_last_completed_index
+from mt5_data import (
+    initialize_mt5,
+    shutdown_mt5,
+    get_klines,
+    get_last_completed_index,
+)
 from config import CANDLE_LIMIT
 
+
 UTC = timezone.utc
-DAILY_REPORT_FILE = Path("data/mt5_daily_report.json")
+DAILY_REPORT_FILE = Path(
+    "data/mt5_daily_report.json"
+)
 
 
 def get_latest_completed_d1_time():
-    df = get_klines("EURUSD", "1d", CANDLE_LIMIT)
+    df = get_klines(
+        "EURUSD",
+        "1d",
+        CANDLE_LIMIT,
+    )
 
     if df is None or len(df) < 1:
         return None
@@ -47,9 +59,11 @@ def load_last_reported_d1():
         logger.exception(
             "Unable to load daily report state"
         )
+
         print(
             f"Daily report state error: {e}"
         )
+
         return None
 
 
@@ -81,7 +95,10 @@ def send_daily_report(results):
     positions = {
         symbol: position
         for symbol, position in positions.items()
-        if position.get("side") in ("BUY", "SELL")
+        if position.get("side") in (
+            "BUY",
+            "SELL",
+        )
     }
 
     lines = [
@@ -94,16 +111,21 @@ def send_daily_report(results):
     ]
 
     if not positions:
-        lines.extend([
-            "NO ACTIVE POSITIONS",
-            "━━━━━━━━━━━━━━━━━━",
-        ])
+        lines.extend(
+            [
+                "NO ACTIVE POSITIONS",
+                "━━━━━━━━━━━━━━━━━━",
+            ]
+        )
+
     else:
-        lines.extend([
-            "ACTIVE POSITIONS",
-            "━━━━━━━━━━━━━━━━━━",
-            "",
-        ])
+        lines.extend(
+            [
+                "ACTIVE POSITIONS",
+                "━━━━━━━━━━━━━━━━━━",
+                "",
+            ]
+        )
 
         result_map = {
             result["symbol"]: result
@@ -141,14 +163,16 @@ def send_daily_report(results):
             )
 
             if result:
-                lines.extend([
-                    f"   Current Price: "
-                    f"{result['price']:.5f}",
-                    f"   4H EMA20: "
-                    f"{result['ema20_4h']:.5f}",
-                    f"   1D EMA20: "
-                    f"{result['ema20_1d']:.5f}",
-                ])
+                lines.extend(
+                    [
+                        f"   Current Price: "
+                        f"{result['price']:.5f}",
+                        f"   4H EMA20: "
+                        f"{result['ema20_4h']:.5f}",
+                        f"   1D EMA20: "
+                        f"{result['ema20_1d']:.5f}",
+                    ]
+                )
 
             lines.append(
                 f"   Status: {status}"
@@ -160,17 +184,21 @@ def send_daily_report(results):
         logger.info(
             "Daily position report sent"
         )
+
         print(
             "Daily position report sent."
         )
+
         return True
 
     logger.error(
         "Daily position report failed"
     )
+
     print(
         "Daily position report failed."
     )
+
     return False
 
 
@@ -185,7 +213,34 @@ def main():
     print("========================================")
     print()
 
+    mt5_ready = False
+
     try:
+        try:
+            initialize_mt5()
+            mt5_ready = True
+
+            print(
+                "MT5 terminal is ready."
+            )
+
+        except Exception as e:
+            logger.exception(
+                "MT5 initialization failed"
+            )
+
+            print(
+                f"MT5 initialization error: {e}"
+            )
+
+            notify(
+                "🚨 CRYPTONOTIFIER MT5 ERROR\n\n"
+                "MT5 terminal failed to become ready.\n\n"
+                f"Error: {e}"
+            )
+
+            return
+
         try:
             check_telegram()
 
@@ -277,7 +332,7 @@ def main():
         print("========================================")
 
         logger.info(
-            "CryptoNotifier MT5 scheduled scan "
+            "CryptoNotifier scheduled scan "
             "completed"
         )
 
@@ -292,6 +347,10 @@ def main():
         )
 
         raise
+
+    finally:
+        if mt5_ready:
+            shutdown_mt5()
 
 
 if __name__ == "__main__":
