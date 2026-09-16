@@ -9,7 +9,7 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 def notify(message):
     response = requests.post(
         f"{BASE_URL}/sendMessage",
-        data={
+        json={
             "chat_id": CHAT_ID,
             "text": message
         },
