@@ -28,14 +28,18 @@ def notify(message):
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=10)
+        response = requests.post(
+            url,
+            json=payload,
+            timeout=10,
+        )
         response.raise_for_status()
         logger.info("Telegram notification sent.")
     except requests.RequestException as e:
         logger.error(f"Telegram notification failed: {e}")
 
 
-def send_position_evaluation(
+def format_position_evaluation(
     symbol,
     position,
     previous_4h,
@@ -70,7 +74,7 @@ def send_position_evaluation(
         else str(entry_price)
     )
 
-    message = (
+    return (
         f"📊 POSITION EVALUATION\n\n"
         f"Symbol: {symbol}\n"
         f"Position: {side}\n"
@@ -99,7 +103,25 @@ def send_position_evaluation(
         f"Status: {status}"
     )
 
+
+def send_position_evaluation(
+    symbol,
+    position,
+    previous_4h,
+    current_4h,
+    current_1d,
+):
+    message = format_position_evaluation(
+        symbol,
+        position,
+        previous_4h,
+        current_4h,
+        current_1d,
+    )
+
     notify(message)
+
+    side = position.get("side", "UNKNOWN")
 
     logger.info(
         f"{symbol} {side} position evaluation sent"

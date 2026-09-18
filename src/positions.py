@@ -157,12 +157,24 @@ def save_signal_tracking(
     signal,
     close_price,
     macd_hist,
+    signal_time=None,
 ):
+    if signal_time is None:
+        signal_time = datetime.now(timezone.utc)
+
+    if hasattr(signal_time, "to_pydatetime"):
+        signal_time = signal_time.to_pydatetime()
+
+    if signal_time.tzinfo is None:
+        signal_time = signal_time.replace(tzinfo=timezone.utc)
+    else:
+        signal_time = signal_time.astimezone(timezone.utc)
+
     tracking = {
         "side": signal,
         "signal_close": float(close_price),
         "signal_macd_hist": float(macd_hist),
-        "signal_time": datetime.now(timezone.utc).strftime(
+        "signal_time": signal_time.strftime(
             "%Y-%m-%d %H:%M"
         ),
     }

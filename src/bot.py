@@ -12,6 +12,9 @@ from positions import (
     get_position,
     evaluate_position,
 )
+from telegram_sender import (
+    format_position_evaluation,
+)
 
 
 db = firestore.Client(project="cryptonotifier-503415")
@@ -281,10 +284,7 @@ def send_positions():
         send_message("NO ACTIVE POSITIONS")
         return
 
-    lines = [
-        "📊 ACTIVE POSITION EVALUATION",
-        "",
-    ]
+    messages = []
 
     for symbol, position in positions.items():
         try:
@@ -301,135 +301,27 @@ def send_positions():
             current_4h = evaluation["current_4h"]
             current_1d = evaluation["current_1d"]
 
-            entry_price = position.get(
-                "entry_price",
-                "UNKNOWN",
+            message = format_position_evaluation(
+                symbol,
+                position,
+                previous_4h,
+                current_4h,
+                current_1d,
             )
 
-            signal_time = position.get(
-                "signal_time",
-                "UNKNOWN",
-            )
-
-            side = position.get(
-                "side",
-                "UNKNOWN",
-            )
-
-            status = position.get(
-                "status",
-                "UNKNOWN",
-            )
-
-            if isinstance(entry_price, (int, float)):
-                entry_text = f"{entry_price:.4f}"
-            else:
-                entry_text = str(entry_price)
-
-            if current_4h["close"] > previous_4h["close"]:
-                direction = "⬆️"
-            elif current_4h["close"] < previous_4h["close"]:
-                direction = "⬇️"
-            else:
-                direction = "➡️"
-
-            if side == "BUY":
-                price_ema20_ok = (
-                    current_4h["close"]
-                    >= current_4h["ema20"]
-                )
-
-                price_ema50_ok = (
-                    current_4h["close"]
-                    >= current_4h["ema50"]
-                )
-
-                macd_ok = (
-                    current_4h["macd_hist"] >= 0
-                )
-
-                daily_ok = (
-                    current_1d["close"]
-                    >= current_1d["ema20"]
-                )
-
-            else:
-                price_ema20_ok = (
-                    current_4h["close"]
-                    <= current_4h["ema20"]
-                )
-
-                price_ema50_ok = (
-                    current_4h["close"]
-                    <= current_4h["ema50"]
-                )
-
-                macd_ok = (
-                    current_4h["macd_hist"] <= 0
-                )
-
-                daily_ok = (
-                    current_1d["close"]
-                    <= current_1d["ema20"]
-                )
-
-            lines.extend(
-                [
-                    f"{'🟢' if side == 'BUY' else '🔴'} {symbol}",
-                    f"Position: {side}",
-                    f"Entry Price: {entry_text}",
-                    f"Opened: {signal_time}",
-                    f"Status: {status}",
-                    "",
-                    "💰 CURRENT PRICE",
-                    f"4H Close: "
-                    f"{current_4h['close']:.4f} "
-                    f"{direction}",
-                    f"Previous 4H Close: "
-                    f"{previous_4h['close']:.4f}",
-                    "",
-                    "📊 4H INDICATORS",
-                    f"EMA20: "
-                    f"{current_4h['ema20']:.4f}",
-                    f"EMA50: "
-                    f"{current_4h['ema50']:.4f}",
-                    f"MACD: "
-                    f"{current_4h['macd']:.4f}",
-                    f"Signal: "
-                    f"{current_4h['macd_signal']:.4f}",
-                    f"Histogram: "
-                    f"{current_4h['macd_hist']:.4f}",
-                    "",
-                    "📈 1D INDICATORS",
-                    f"Close: "
-                    f"{current_1d['close']:.4f}",
-                    f"EMA20: "
-                    f"{current_1d['ema20']:.4f}",
-                    "",
-                    "📋 POSITION CHECK",
-                    f"{'✅' if price_ema20_ok else '❌'} "
-                    f"4H Price vs EMA20",
-                    f"{'✅' if price_ema50_ok else '❌'} "
-                    f"4H Price vs EMA50",
-                    f"{'✅' if macd_ok else '❌'} "
-                    f"4H MACD Histogram vs 0",
-                    f"{'✅' if daily_ok else '❌'} "
-                    f"1D Close vs EMA20",
-                    "",
-                ]
-            )
+            messages.append(message)
 
         except Exception as e:
-            lines.extend(
-                [
-                    f"{symbol}",
-                    f"Side: {position.get('side', 'UNKNOWN')}",
-                    "Status: EVALUATION ERROR",
-                    f"Error: {e}",
-                    "",
-                ]
+            messages.append(
+                f"📊 POSITION EVALUATION\n\n"
+                f"Symbol: {symbol}\n"
+                f"Position: "
+                f"{position.get('side', 'UNKNOWN')}\n"
+                f"Status: EVALUATION ERROR\n"
+                f"Error: {e}"
             )
 
-    send_message(
-        "\n".join(lines)
-    )
+    if messages:
+        send_message(
+            "\n\n".join(messages)
+        )

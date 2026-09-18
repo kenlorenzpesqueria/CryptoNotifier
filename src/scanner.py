@@ -1,4 +1,5 @@
 ﻿import json
+from datetime import datetime, timedelta, timezone
 
 from binance import get_klines
 from config import CANDLE_LIMIT
@@ -19,6 +20,49 @@ from logger import logger
 def load_watchlist():
     with open("data/watchlist.json", "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def normalize_datetime(value):
+    if value is None:
+        return None
+
+    if hasattr(value, "to_pydatetime"):
+        value = value.to_pydatetime()
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+
+        return value.astimezone(timezone.utc)
+
+    if isinstance(value, str):
+        value = value.strip()
+
+        try:
+            parsed = datetime.fromisoformat(
+                value.replace("Z", "+00:00")
+            )
+        except ValueError:
+            parsed = datetime.strptime(
+                value,
+                "%Y-%m-%d %H:%M"
+            )
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+
+        return parsed.astimezone(timezone.utc)
+
+    if isinstance(value, (int, float)):
+        if value > 100000000000:
+            value = value / 1000
+
+        return datetime.fromtimestamp(
+            value,
+            tz=timezone.utc,
+        )
+
+    return None
 
 
 def buy_confirmation_passes(current_4h, current_1d):
@@ -49,11 +93,11 @@ def send_position_evaluation(
     status = position.get("status", "UNKNOWN")
 
     if current_4h["close"] > previous_4h["close"]:
-        direction = "UP"
+        direction = "⬆️"
     elif current_4h["close"] < previous_4h["close"]:
-        direction = "DOWN"
+        direction = "⬇️"
     else:
-        direction = "FLAT"
+        direction = "➡️"
 
     if side == "BUY":
         price_ema20_ok = current_4h["close"] >= current_4h["ema20"]
@@ -73,30 +117,30 @@ def send_position_evaluation(
     )
 
     message = (
-        f"POSITION EVALUATION\n\n"
+        f"📊 POSITION EVALUATION\n\n"
         f"Symbol: {symbol}\n"
         f"Position: {side}\n"
         f"Entry Price: {entry_text}\n\n"
-        f"CURRENT PRICE\n"
+        f"💰 CURRENT PRICE\n"
         f"4H Close: {current_4h['close']:.4f} {direction}\n"
         f"Previous 4H Close: {previous_4h['close']:.4f}\n\n"
-        f"4H INDICATORS\n"
+        f"📊 4H INDICATORS\n"
         f"EMA20: {current_4h['ema20']:.4f}\n"
         f"EMA50: {current_4h['ema50']:.4f}\n"
         f"MACD: {current_4h['macd']:.4f}\n"
         f"Signal: {current_4h['macd_signal']:.4f}\n"
         f"Histogram: {current_4h['macd_hist']:.4f}\n\n"
-        f"1D INDICATORS\n"
+        f"📈 1D INDICATORS\n"
         f"Close: {current_1d['close']:.4f}\n"
         f"EMA20: {current_1d['ema20']:.4f}\n\n"
-        f"POSITION CHECK\n"
-        f"{'PASS' if price_ema20_ok else 'FAIL'} "
+        f"📋 POSITION CHECK\n"
+        f"{'✅' if price_ema20_ok else '❌'} "
         f"4H Price vs EMA20\n"
-        f"{'PASS' if price_ema50_ok else 'FAIL'} "
+        f"{'✅' if price_ema50_ok else '❌'} "
         f"4H Price vs EMA50\n"
-        f"{'PASS' if macd_ok else 'FAIL'} "
+        f"{'✅' if macd_ok else '❌'} "
         f"4H MACD Histogram vs 0\n"
-        f"{'PASS' if daily_ok else 'FAIL'} "
+        f"{'✅' if daily_ok else '❌'} "
         f"1D Close vs EMA20\n\n"
         f"Status: {status}"
     )
@@ -152,6 +196,13 @@ def run_scan():
             current_4h = df_4h.iloc[-2]
             current_1d = df_1d.iloc[-2]
 
+            current_h4_time = normalize_datetime(
+                current_4h.get("open_time")
+            )
+
+            print(
+                f"4H Candle: {current_h4_time}"
+            )
             print(
                 f"4H Close : {current_4h['close']}"
             )
@@ -178,7 +229,6 @@ def run_scan():
             )
 
             position = get_position(symbol)
-            position_status = None
 
             if position:
                 status = evaluate_position(
@@ -249,17 +299,116 @@ def run_scan():
 
                 continue
 
-            signal = get_signal(
-                df_4h,
-                df_1d,
+            tracking = get_signal_tracking(symbol)
+            confirmation_checked = False
+            confirmation_signal = False
+            send_new_signal = False
+            trigger_type = None
+
+            if tracking:
+                tracking_time = normalize_datetime(
+                    tracking.get("signal_time")
+                )
+
+                if (
+                    current_h4_time is not None
+                    and tracking_time is not None
+                ):
+                    expected_confirmation_time = (
+                        tracking_time + timedelta(hours=4)
+                    )
+
+                    if current_h4_time == expected_confirmation_time:
+                        confirmation_checked = True
+
+                        if tracking.get("side") == "BUY":
+                            confirmation_passes = (
+                                buy_confirmation_passes(
+                                    current_4h,
+                                    current_1d,
+                                )
+                            )
+
+                            improved = buy_has_improved(
+                                current_4h,
+                                tracking,
+                            )
+
+                            if confirmation_passes and improved:
+                                send_new_signal = True
+                                confirmation_signal = True
+
+                            clear_signal_tracking(symbol)
+
+                            if confirmation_passes and improved:
+                                logger.info(
+                                    f"{symbol} BUY confirmation passed"
+                                )
+                            else:
+                                logger.info(
+                                    f"{symbol} BUY confirmation "
+                                    f"failed and tracking cleared"
+                                )
+
+                        elif tracking.get("side") == "SELL":
+                            clear_signal_tracking(symbol)
+
+                    elif current_h4_time > expected_confirmation_time:
+                        clear_signal_tracking(symbol)
+
+                        logger.info(
+                            f"{symbol} stale signal tracking cleared"
+                        )
+
+                    elif current_h4_time < expected_confirmation_time:
+                        print(
+                            "Signal tracking waiting for next "
+                            "completed 4H candle"
+                        )
+
+                else:
+                    clear_signal_tracking(symbol)
+
+                    logger.info(
+                        f"{symbol} invalid signal tracking cleared"
+                    )
+
+            signal = None
+
+            if not confirmation_checked:
+                signal = get_signal(
+                    df_4h,
+                    df_1d,
+                )
+
+            buy_ema20_cross = (
+                previous_4h["close"] < previous_4h["ema20"]
+                and current_4h["close"] > current_4h["ema20"]
+            )
+
+            buy_ema50_cross = (
+                previous_4h["close"] < previous_4h["ema50"]
+                and current_4h["close"] > current_4h["ema50"]
+            )
+
+            sell_ema20_cross = (
+                previous_4h["close"] > previous_4h["ema20"]
+                and current_4h["close"] < current_4h["ema20"]
+            )
+
+            sell_ema50_cross = (
+                previous_4h["close"] > previous_4h["ema50"]
+                and current_4h["close"] < current_4h["ema50"]
             )
 
             buy_conditions = {
-                "Previous 4H close below EMA20":
-                    previous_4h["close"] < previous_4h["ema20"],
-                "Current 4H close above EMA20":
+                "EMA20 crossover up":
+                    buy_ema20_cross,
+                "EMA50 crossover up":
+                    buy_ema50_cross,
+                "4H close above EMA20":
                     current_4h["close"] > current_4h["ema20"],
-                "Current 4H close above EMA50":
+                "4H close above EMA50":
                     current_4h["close"] > current_4h["ema50"],
                 "4H MACD Histogram above 0":
                     current_4h["macd_hist"] > 0,
@@ -268,17 +417,63 @@ def run_scan():
             }
 
             sell_conditions = {
-                "Previous 4H close above EMA20":
-                    previous_4h["close"] > previous_4h["ema20"],
-                "Current 4H close below EMA20":
+                "EMA20 crossover down":
+                    sell_ema20_cross,
+                "EMA50 crossover down":
+                    sell_ema50_cross,
+                "4H close below EMA20":
                     current_4h["close"] < current_4h["ema20"],
-                "Current 4H close below EMA50":
+                "4H close below EMA50":
                     current_4h["close"] < current_4h["ema50"],
                 "4H MACD Histogram below 0":
                     current_4h["macd_hist"] < 0,
                 "1D close below EMA20":
                     current_1d["close"] < current_1d["ema20"],
             }
+
+            if confirmation_signal:
+                signal_type = "BUY"
+
+                conditions = {
+                    "4H close above EMA20":
+                        current_4h["close"] > current_4h["ema20"],
+                    "4H close above EMA50":
+                        current_4h["close"] > current_4h["ema50"],
+                    "4H MACD Histogram above 0":
+                        current_4h["macd_hist"] > 0,
+                    "1D close above EMA20":
+                        current_1d["close"] > current_1d["ema20"],
+                }
+
+            elif signal == "BUY":
+                signal_type = "BUY"
+                conditions = buy_conditions
+
+                if buy_ema20_cross and buy_ema50_cross:
+                    trigger_type = "EMA20 + EMA50 CROSSOVER"
+                elif buy_ema20_cross:
+                    trigger_type = "EMA20 CROSSOVER"
+                elif buy_ema50_cross:
+                    trigger_type = "EMA50 CROSSOVER"
+
+                send_new_signal = True
+
+            elif signal == "SELL":
+                signal_type = "SELL"
+                conditions = sell_conditions
+
+                if sell_ema20_cross and sell_ema50_cross:
+                    trigger_type = "EMA20 + EMA50 CROSSOVER"
+                elif sell_ema20_cross:
+                    trigger_type = "EMA20 CROSSOVER"
+                elif sell_ema50_cross:
+                    trigger_type = "EMA50 CROSSOVER"
+
+                send_new_signal = True
+
+            else:
+                signal_type = None
+                conditions = None
 
             results.append({
                 "symbol": symbol,
@@ -304,62 +499,34 @@ def run_scan():
                 "position_status": None,
             })
 
-            tracking = get_signal_tracking(symbol)
-
-            send_new_signal = False
-            confirmation_signal = False
-
-            if signal == "BUY":
-                if tracking and tracking.get("side") == "BUY":
-                    confirmation_passes = (
-                        buy_confirmation_passes(
-                            current_4h,
-                            current_1d,
-                        )
-                    )
-
-                    improved = buy_has_improved(
-                        current_4h,
-                        tracking,
-                    )
-
-                    if confirmation_passes and improved:
-                        send_new_signal = True
-                        confirmation_signal = True
-                else:
-                    send_new_signal = True
-
-            elif signal == "SELL":
-                if tracking and tracking.get("side") == "SELL":
-                    send_new_signal = False
-                else:
-                    send_new_signal = True
-
-            if send_new_signal:
-                conditions = (
-                    buy_conditions
-                    if signal == "BUY"
-                    else sell_conditions
-                )
-
+            if send_new_signal and signal_type:
                 condition_text = "\n".join(
-                    f"{'PASS' if value else 'FAIL'} {name}"
+                    f"{'✅' if value else '❌'} {name}"
                     for name, value in conditions.items()
                 )
 
                 if confirmation_signal:
-                    signal_title = "ALERT BUY CONFIRMATION"
+                    signal_title = "🚨 BUY CONFIRMATION"
+                    trigger_text = (
+                        "Trigger: Previous BUY signal confirmation"
+                    )
                 else:
-                    signal_title = f"ALERT {signal} SIGNAL"
+                    signal_title = f"🚨 {signal_type} SIGNAL"
+                    trigger_text = (
+                        f"Trigger: {trigger_type}"
+                        if trigger_type
+                        else "Trigger: EMA crossover"
+                    )
 
                 message = (
                     f"{signal_title}\n\n"
-                    f"Symbol: {symbol}\n\n"
-                    f"CURRENT PRICE\n"
+                    f"Symbol: {symbol}\n"
+                    f"{trigger_text}\n\n"
+                    f"💰 Price: "
                     f"{current_4h['close']:.4f}\n\n"
-                    f"4H CONDITIONS\n"
+                    f"📊 4H CONDITIONS\n"
                     f"{condition_text}\n\n"
-                    f"INDICATORS\n"
+                    f"📈 INDICATORS\n"
                     f"4H EMA20: "
                     f"{current_4h['ema20']:.4f}\n"
                     f"4H EMA50: "
@@ -374,40 +541,35 @@ def run_scan():
                     f"{current_4h['macd_signal']:.4f}\n"
                     f"Histogram: "
                     f"{current_4h['macd_hist']:.4f}\n\n"
-                    f"Recommendation: {signal}"
+                    f"🎯 Recommendation: {signal_type}"
                 )
 
                 notify(message)
 
                 logger.info(
-                    f"{symbol} {signal}"
+                    f"{symbol} {signal_type}"
                     f"{' confirmation' if confirmation_signal else ''}"
                 )
 
                 print(
-                    f"Trade : {signal}"
+                    f"Trade : {signal_type}"
                     f"{' CONFIRMATION' if confirmation_signal else ''}"
                 )
 
-                if signal == "BUY":
+                if (
+                    signal_type == "BUY"
+                    and not confirmation_signal
+                ):
                     save_signal_tracking(
                         symbol,
                         "BUY",
                         current_4h["close"],
                         current_4h["macd_hist"],
+                        current_h4_time,
                     )
 
             else:
-                if (
-                    tracking
-                    and tracking.get("side") == "BUY"
-                ):
-                    print("Trade : NONE")
-                    print(
-                        "BUY setup waiting for improvement"
-                    )
-                else:
-                    print("Trade : NONE")
+                print("Trade : NONE")
 
             print()
 
@@ -424,7 +586,7 @@ def run_scan():
 
     if errors:
         message = (
-            "ALERT CRYPTONOTIFIER ERROR\n\n"
+            "🚨 CRYPTONOTIFIER ERROR\n\n"
             + "\n".join(errors)
         )
 

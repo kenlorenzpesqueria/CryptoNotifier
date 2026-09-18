@@ -48,4 +48,16 @@ def get_klines(symbol, interval, limit):
     ]:
         df[column] = df[column].astype(float)
 
+    df["open_time"] = pd.to_datetime(
+        df["open_time"],
+        unit="ms",
+        utc=True
+    )
+
+    df["close_time"] = pd.to_datetime(
+        df["close_time"],
+        unit="ms",
+        utc=True
+    )
+
     return df
