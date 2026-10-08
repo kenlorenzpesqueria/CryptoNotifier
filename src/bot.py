@@ -2,22 +2,17 @@ import requests
 
 from google.cloud import firestore
 
-from config import BOT_TOKEN, CHAT_ID, CANDLE_LIMIT
-from binance import get_klines
-from indicators import calculate_indicators
+from config import BOT_TOKEN, CHAT_ID
 from positions import (
     update_position,
     close_position,
     load_positions,
-    get_position,
-    evaluate_position,
-)
-from telegram_sender import (
-    format_position_evaluation,
 )
 
 
-db = firestore.Client(project="cryptonotifier-503415")
+db = firestore.Client(
+    project="cryptonotifier-503415"
+)
 
 TELEGRAM_STATE_COLLECTION = "bot_state"
 TELEGRAM_STATE_DOCUMENT = "telegram"
@@ -25,8 +20,12 @@ TELEGRAM_STATE_DOCUMENT = "telegram"
 
 def load_offset():
     doc = (
-        db.collection(TELEGRAM_STATE_COLLECTION)
-        .document(TELEGRAM_STATE_DOCUMENT)
+        db.collection(
+            TELEGRAM_STATE_COLLECTION
+        )
+        .document(
+            TELEGRAM_STATE_DOCUMENT
+        )
         .get()
     )
 
@@ -38,8 +37,12 @@ def load_offset():
 
 def save_offset(offset):
     (
-        db.collection(TELEGRAM_STATE_COLLECTION)
-        .document(TELEGRAM_STATE_DOCUMENT)
+        db.collection(
+            TELEGRAM_STATE_COLLECTION
+        )
+        .document(
+            TELEGRAM_STATE_DOCUMENT
+        )
         .set(
             {
                 "offset": offset
@@ -50,7 +53,10 @@ def save_offset(offset):
 
 
 def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/sendMessage"
+    )
 
     response = requests.post(
         url,
@@ -75,7 +81,10 @@ def check_telegram():
     if offset is not None:
         params["offset"] = offset
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    url = (
+        f"https://api.telegram.org/"
+        f"bot{BOT_TOKEN}/getUpdates"
+    )
 
     response = requests.get(
         url,
@@ -93,7 +102,9 @@ def check_telegram():
     updates = data.get("result", [])
 
     if not updates:
-        print("No new Telegram messages.")
+        print(
+            "No new Telegram messages."
+        )
         return
 
     for update in updates:
@@ -106,14 +117,22 @@ def check_telegram():
             continue
 
         chat_id = str(
-            message.get("chat", {}).get("id")
+            message.get(
+                "chat",
+                {}
+            ).get(
+                "id"
+            )
         )
 
         if chat_id != str(CHAT_ID):
             save_offset(update_id + 1)
             continue
 
-        text = message.get("text", "").strip()
+        text = message.get(
+            "text",
+            ""
+        ).strip()
 
         if not text:
             save_offset(update_id + 1)
@@ -130,13 +149,14 @@ def check_telegram():
             save_offset(update_id + 1)
 
             print(
-                f"Telegram update {update_id} acknowledged."
+                f"Telegram update "
+                f"{update_id} acknowledged."
             )
 
         except Exception as e:
             print(
-                f"Failed to process Telegram update "
-                f"{update_id}: {e}"
+                f"Failed to process Telegram "
+                f"update {update_id}: {e}"
             )
 
             raise
@@ -160,15 +180,18 @@ def process_command(text):
 
 
 def handle_position(parts):
-    if len(parts) == 3 and parts[2].upper() == "CLOSE":
+    if (
+        len(parts) == 3
+        and parts[2].upper() == "CLOSE"
+    ):
         symbol = parts[1].upper()
 
         if close_position(symbol):
             send_message(
                 f"POSITION CLOSED\n\n"
                 f"Symbol: {symbol}\n\n"
-                f"CryptoNotifier will no longer monitor "
-                f"this position."
+                f"CryptoNotifier will no longer "
+                f"monitor this position."
             )
         else:
             send_message(
@@ -226,49 +249,10 @@ def handle_position(parts):
         f"Side: {side}\n"
         f"Entry Price: {price:.4f}\n"
         f"Status: HEALTHY\n\n"
-        f"CryptoNotifier will evaluate this "
-        f"position every 4 hours."
+        f"CryptoNotifier will alert only if "
+        f"a completed 4H candle closes below "
+        f"EMA20."
     )
-
-
-def evaluate_current_position(symbol, position):
-    df_4h = get_klines(
-        symbol,
-        "4h",
-        CANDLE_LIMIT,
-    )
-
-    df_1d = get_klines(
-        symbol,
-        "1d",
-        CANDLE_LIMIT,
-    )
-
-    df_4h = calculate_indicators(df_4h)
-    df_1d = calculate_indicators(df_1d)
-
-    previous_4h = df_4h.iloc[-3]
-    current_4h = df_4h.iloc[-2]
-    current_1d = df_1d.iloc[-2]
-
-    evaluate_position(
-        symbol,
-        position["side"],
-        current_4h,
-        current_1d,
-    )
-
-    updated_position = get_position(symbol)
-
-    if updated_position is None:
-        return None
-
-    return {
-        "position": updated_position,
-        "previous_4h": previous_4h,
-        "current_4h": current_4h,
-        "current_1d": current_1d,
-    }
 
 
 def send_positions():
@@ -281,47 +265,46 @@ def send_positions():
     }
 
     if not positions:
-        send_message("NO ACTIVE POSITIONS")
+        send_message(
+            "NO ACTIVE POSITIONS"
+        )
         return
 
-    messages = []
+    messages = [
+        "📋 ACTIVE POSITIONS"
+    ]
 
     for symbol, position in positions.items():
-        try:
-            evaluation = evaluate_current_position(
-                symbol,
-                position,
-            )
-
-            if evaluation is None:
-                continue
-
-            position = evaluation["position"]
-            previous_4h = evaluation["previous_4h"]
-            current_4h = evaluation["current_4h"]
-            current_1d = evaluation["current_1d"]
-
-            message = format_position_evaluation(
-                symbol,
-                position,
-                previous_4h,
-                current_4h,
-                current_1d,
-            )
-
-            messages.append(message)
-
-        except Exception as e:
-            messages.append(
-                f"📊 POSITION EVALUATION\n\n"
-                f"Symbol: {symbol}\n"
-                f"Position: "
-                f"{position.get('side', 'UNKNOWN')}\n"
-                f"Status: EVALUATION ERROR\n"
-                f"Error: {e}"
-            )
-
-    if messages:
-        send_message(
-            "\n\n".join(messages)
+        side = position.get(
+            "side",
+            "UNKNOWN",
         )
+
+        entry_price = position.get(
+            "entry_price",
+            "UNKNOWN",
+        )
+
+        status = position.get(
+            "status",
+            "UNKNOWN",
+        )
+
+        if isinstance(
+            entry_price,
+            (int, float)
+        ):
+            entry_text = f"{entry_price:.4f}"
+        else:
+            entry_text = str(entry_price)
+
+        messages.append(
+            f"\n{symbol}\n"
+            f"Position: {side}\n"
+            f"Entry Price: {entry_text}\n"
+            f"Status: {status}"
+        )
+
+    send_message(
+        "\n".join(messages)
+    )

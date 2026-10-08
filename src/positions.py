@@ -41,6 +41,7 @@ def update_position(symbol, signal, price):
             "%Y-%m-%d %H:%M"
         ),
         "status": "HEALTHY",
+        "ema20_alerted": False,
     }
 
     (
@@ -96,47 +97,50 @@ def update_status(symbol, status):
     return True
 
 
-def evaluate_position(symbol, side, current_4h, current_1d):
+def check_ema20_breach(symbol, side, current_4h):
     position = get_position(symbol)
 
     if position is None:
-        return None
+        return False
 
-    old_status = position.get("status", "HEALTHY")
+    if side != "BUY":
+        return False
 
-    if side == "BUY":
-        weakening = (
-            current_4h["close"] < current_4h["ema20"]
-            or current_4h["close"] < current_4h["ema50"]
-            or current_4h["macd_hist"] < 0
-            or current_1d["close"] < current_1d["ema20"]
-        )
+    close_price = float(current_4h["close"])
+    ema20 = float(current_4h["ema20"])
 
-    elif side == "SELL":
-        weakening = (
-            current_4h["close"] > current_4h["ema20"]
-            or current_4h["close"] > current_4h["ema50"]
-            or current_4h["macd_hist"] > 0
-            or current_1d["close"] > current_1d["ema20"]
-        )
+    below_ema20 = close_price < ema20
+    already_alerted = position.get(
+        "ema20_alerted",
+        False,
+    )
 
-    else:
-        return None
+    if below_ema20:
+        if already_alerted:
+            return False
 
-    new_status = "WEAKENING" if weakening else "HEALTHY"
-
-    if old_status != new_status:
         (
             db.collection(POSITIONS_COLLECTION)
             .document(symbol)
             .update({
-                "status": new_status
+                "status": "WEAKENING",
+                "ema20_alerted": True,
             })
         )
 
-        return new_status
+        return True
 
-    return None
+    if already_alerted:
+        (
+            db.collection(POSITIONS_COLLECTION)
+            .document(symbol)
+            .update({
+                "status": "HEALTHY",
+                "ema20_alerted": False,
+            })
+        )
+
+    return False
 
 
 def get_signal_tracking(symbol):
@@ -156,7 +160,7 @@ def save_signal_tracking(
     symbol,
     signal,
     close_price,
-    macd_hist,
+    macd,
     signal_time=None,
 ):
     if signal_time is None:
@@ -166,14 +170,18 @@ def save_signal_tracking(
         signal_time = signal_time.to_pydatetime()
 
     if signal_time.tzinfo is None:
-        signal_time = signal_time.replace(tzinfo=timezone.utc)
+        signal_time = signal_time.replace(
+            tzinfo=timezone.utc
+        )
     else:
-        signal_time = signal_time.astimezone(timezone.utc)
+        signal_time = signal_time.astimezone(
+            timezone.utc
+        )
 
     tracking = {
         "side": signal,
         "signal_close": float(close_price),
-        "signal_macd_hist": float(macd_hist),
+        "signal_macd": float(macd),
         "signal_time": signal_time.strftime(
             "%Y-%m-%d %H:%M"
         ),

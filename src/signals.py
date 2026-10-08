@@ -17,7 +17,7 @@ def get_signal(df_4h, df_1d):
         (buy_ema20_cross or buy_ema50_cross)
         and current_4h["close"] > current_4h["ema20"]
         and current_4h["close"] > current_4h["ema50"]
-        and current_4h["macd_hist"] > 0
+        and current_4h["macd"] > 0
         and current_1d["close"] > current_1d["ema20"]
     )
 
